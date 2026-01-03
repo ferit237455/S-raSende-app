@@ -33,17 +33,10 @@ const Services = () => {
     };
 
     useEffect(() => {
-        let isMounted = true;
-
-        const loadData = async () => {
-            if (isMounted) fetchServices();
-        };
-
-        loadData();
-
-        return () => {
-            isMounted = false;
-        };
+        fetchServices();
+        // Acil durum zaman aşımı
+        const timeout = setTimeout(() => setLoading(false), 5000);
+        return () => clearTimeout(timeout);
     }, []);
 
     const [submitting, setSubmitting] = useState(false);

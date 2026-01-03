@@ -10,6 +10,9 @@ const History = () => {
 
     useEffect(() => {
         fetchData();
+        // Acil durum zaman aşımı
+        const timeout = setTimeout(() => setLoading(false), 5000);
+        return () => clearTimeout(timeout);
     }, []);
 
     const fetchData = async () => {

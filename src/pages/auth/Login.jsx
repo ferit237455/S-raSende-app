@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabase';
 import { useNavigate } from 'react-router-dom';
 
@@ -8,6 +8,29 @@ const Login = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const navigate = useNavigate();
+
+    useEffect(() => {
+        const checkUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('user_type')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profile?.user_type === 'tradesman') {
+                    navigate('/dashboard');
+                } else {
+                    navigate('/explore');
+                }
+            }
+        };
+        checkUser();
+        // Acil durum zaman aşımı
+        const timeout = setTimeout(() => { }, 2000); // Redirect is fast, but let's be safe
+        return () => clearTimeout(timeout);
+    }, [navigate]);
 
     const handleLogin = async (e) => {
         e.preventDefault();

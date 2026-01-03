@@ -12,6 +12,9 @@ const CustomerDashboard = () => {
 
     useEffect(() => {
         fetchDashboardData();
+        // Acil durum zaman aşımı
+        const timeout = setTimeout(() => setLoading(false), 5000);
+        return () => clearTimeout(timeout);
     }, []);
 
     const fetchDashboardData = async () => {

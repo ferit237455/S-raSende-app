@@ -18,6 +18,9 @@ const CalendarPage = () => {
             }
         };
         loadAppointments();
+        // Acil durum zaman aşımı
+        const timeout = setTimeout(() => setLoading(false), 5000);
+        return () => clearTimeout(timeout);
     }, []);
 
     // Simple day grouping
@@ -52,7 +55,7 @@ const CalendarPage = () => {
                                             </div>
                                         </div>
                                         <span className={`px-2 py-1 text-xs rounded-full ${apt.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                                                apt.status === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
+                                            apt.status === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
                                             }`}>
                                             {apt.status}
                                         </span>

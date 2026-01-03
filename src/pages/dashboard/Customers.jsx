@@ -42,6 +42,9 @@ const Customers = () => {
         };
 
         fetchCustomers();
+        // Acil durum zaman aşımı
+        const timeout = setTimeout(() => setLoading(false), 5000);
+        return () => clearTimeout(timeout);
     }, []);
 
     if (loading) return <div>Yükleniyor...</div>;

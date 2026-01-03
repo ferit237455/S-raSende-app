@@ -9,32 +9,60 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Helper to clear corrupted supabase storage
+        const clearSupabaseAuth = () => {
+            try {
+                Object.keys(localStorage).forEach(key => {
+                    if (key.includes('supabase.auth.token') || key.startsWith('sb-')) {
+                        localStorage.removeItem(key);
+                    }
+                });
+            } catch (e) {
+                console.error('Local storage cleanup error:', e);
+            }
+        };
+
         // Helper to get profile
         const getProfile = async (userId) => {
-            if (!userId) {
+            try {
+                if (!userId) {
+                    setProfile(null);
+                    return;
+                }
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', userId)
+                    .single();
+
+                if (error) throw error;
+                setProfile(data);
+            } catch (err) {
+                console.error('Profile fetch error:', err);
                 setProfile(null);
-                return;
             }
-            const { data } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', userId)
-                .single();
-            setProfile(data);
         };
 
         // Check active sessions and sets the user
         const getSession = async () => {
             try {
                 const { data: { session }, error } = await supabase.auth.getSession();
-                if (error) throw error;
+                if (error) {
+                    clearSupabaseAuth();
+                    throw error;
+                }
 
                 setUser(session?.user ?? null);
                 if (session?.user) {
                     await getProfile(session.user.id);
+                } else {
+                    setProfile(null);
                 }
             } catch (error) {
                 console.error('Session check error:', error);
+                setUser(null);
+                setProfile(null);
+                clearSupabaseAuth(); // Clear on failure to prevent stuck state
             } finally {
                 setLoading(false);
             }
@@ -42,13 +70,18 @@ export const AuthProvider = ({ children }) => {
 
         getSession();
 
-        // Listen for changes on auth state (logged in, signed out, etc.)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        // Listen for changes on auth state
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             try {
-                setUser(session?.user ?? null);
-                if (session?.user) {
+                if (event === 'SIGNED_OUT') {
+                    clearSupabaseAuth();
+                    setUser(null);
+                    setProfile(null);
+                } else if (session?.user) {
+                    setUser(session.user);
                     await getProfile(session.user.id);
                 } else {
+                    setUser(null);
                     setProfile(null);
                 }
             } catch (error) {
@@ -58,7 +91,15 @@ export const AuthProvider = ({ children }) => {
             }
         });
 
-        return () => subscription.unsubscribe();
+        // Emergency timeout to ensure app doesn't hang
+        const timeout = setTimeout(() => {
+            setLoading(false);
+        }, 5000);
+
+        return () => {
+            subscription.unsubscribe();
+            clearTimeout(timeout);
+        };
     }, []);
 
     if (loading) {

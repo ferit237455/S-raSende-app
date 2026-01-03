@@ -11,6 +11,9 @@ const Dashboard = () => {
     const navigate = useNavigate();
 
     const fetchAppointments = async () => {
+        setLoading(true);
+        setError(null);
+        setAppointments([]); // Eski veriyi temizle
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
@@ -20,7 +23,6 @@ const Dashboard = () => {
             const data = await appointmentService.getAppointments();
             setAppointments(data || []);
         } catch (err) {
-            console.log(err)
             setError(err.message);
         } finally {
             setLoading(false);
@@ -28,20 +30,22 @@ const Dashboard = () => {
     };
 
     useEffect(() => {
-        let isMounted = true;
-
-        if (isMounted) fetchAppointments();
-
-        return () => { isMounted = false; };
-    }, [navigate]);
+        fetchAppointments();
+        // Acil durum zaman aşımı: 5 saniye içinde veri gelmezse yüklemeyi zorla kapat
+        const timeout = setTimeout(() => setLoading(false), 5000);
+        return () => clearTimeout(timeout);
+    }, []);
 
     const handleCancel = async (id) => {
         if (!window.confirm('Randevuyu iptal etmek istediğinize emin misiniz?')) return;
+        setLoading(true);
         try {
             await appointmentService.cancelAppointment(id);
-            fetchAppointments(); // Refresh list
+            await fetchAppointments(); // Refresh list effectively updates state
         } catch (err) {
             alert('İptal işlemi başarısız: ' + err.message);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -74,11 +78,7 @@ const Dashboard = () => {
         <div className="p-8 max-w-7xl mx-auto">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-gray-900">Randevu Paneli</h1>
-                <button
-                    onClick={() => navigate('/book-appointment')}
-                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
-                    Yeni Randevu Al
-                </button>
+
             </div>
 
             {error && <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>}

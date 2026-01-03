@@ -20,12 +20,19 @@ const Explore = () => {
 
         loadData();
 
-        return () => { isMounted = false; };
+        // Acil durum zaman aşımı
+        const timeout = setTimeout(() => setLoading(false), 5000);
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timeout);
+        };
     }, []);
 
     const fetchTradesmen = async () => {
         setLoading(true);
         setError(null);
+        setTradesmen([]); // Eski veriyi temizle
         try {
             const { data, error } = await supabase
                 .from('profiles')

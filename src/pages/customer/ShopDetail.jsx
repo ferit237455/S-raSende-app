@@ -12,6 +12,9 @@ const ShopDetail = () => {
 
     useEffect(() => {
         fetchShopDetails();
+        // Acil durum zaman aşımı
+        const timeout = setTimeout(() => setLoading(false), 5000);
+        return () => clearTimeout(timeout);
     }, [id]);
 
     const fetchShopDetails = async () => {

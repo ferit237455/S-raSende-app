@@ -17,13 +17,35 @@ const BookAppointment = () => {
     const navigate = useNavigate();
 
     useEffect(() => {
-        fetchServices();
-        // If query param exists, update state (redundant if initial state works, but safe for updates)
+        const checkAuthAndFetch = async () => {
+            setLoading(true);
+            setServices([]); // Her denemede temiz başla
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    navigate('/login');
+                    return;
+                }
+                await fetchServices();
+            } catch (error) {
+                console.error('Initial check failed:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        checkAuthAndFetch();
+
+        // Acil durum zaman aşımı
+        const timeout = setTimeout(() => setLoading(false), 5000);
+
         const sId = searchParams.get('serviceId');
         if (sId) {
             setFormData(prev => ({ ...prev, service_id: sId }));
         }
-    }, [searchParams]);
+
+        return () => clearTimeout(timeout);
+    }, [searchParams, navigate]);
 
     const fetchServices = async () => {
         try {
@@ -43,44 +65,52 @@ const BookAppointment = () => {
             setServices(data || []);
         } catch (error) {
             console.error('Error fetching services:', error);
-        } finally {
-            setLoading(false);
         }
     };
 
     const [isWaitlist, setIsWaitlist] = useState(false);
 
     useEffect(() => {
-        if (formData.service_id && formData.date && formData.time) {
-            checkAvailability();
-        } else {
-            setIsWaitlist(false);
-        }
-    }, [formData.service_id, formData.date, formData.time]);
+        const runCheck = async () => {
+            if (formData.service_id && formData.date && formData.time) {
+                await checkAvailability();
+            } else {
+                setIsWaitlist(false);
+            }
+        };
+        runCheck();
+    }, [formData.date, formData.time, formData.service_id]);
 
     const checkAvailability = async () => {
         const selectedService = services.find(s => s.id === formData.service_id);
-        if (!selectedService) return;
+        if (!selectedService || !formData.date || !formData.time) return;
 
-        const startTime = new Date(`${formData.date}T${formData.time}`);
-        const endTime = new Date(startTime.getTime() + selectedService.duration * 60000);
+        try {
+            const startTime = new Date(`${formData.date}T${formData.time}`);
+            const endTime = new Date(startTime.getTime() + selectedService.duration * 60000);
 
-        // Check for overlapping appointments
-        // Note: Simple overlap logic: (StartA < EndB) and (EndA > StartB)
-        const { data, error } = await supabase
-            .from('appointments')
-            .select('id')
-            .eq('tradesman_id', selectedService.tradesman_id)
-            .neq('status', 'cancelled')
-            .lt('start_time', endTime.toISOString())
-            .gt('end_time', startTime.toISOString());
+            const startISO = startTime.toISOString();
+            const endISO = endTime.toISOString();
 
-        if (error) {
-            console.error('Availability check failed:', error);
-            return;
+            console.log('Kontrol edilen aralık:', formData.time, '-', endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+            // Aralık Sorgusu: Yeni randevunun aralığı mevcut randevularla çakışıyor mu?
+            const { count, error } = await supabase
+                .from('appointments')
+                .select('id', { count: 'exact', head: true })
+                .eq('tradesman_id', selectedService.tradesman_id)
+                .eq('status', 'confirmed')
+                .lt('start_time', endISO)
+                .gt('end_time', startISO);
+
+            if (error) throw error;
+
+            const hasConflict = count > 0;
+            setIsWaitlist(hasConflict);
+            console.log('Saat dolu mu?:', hasConflict);
+        } catch (error) {
+            console.error('Müsaitlik kontrolü başarısız:', error);
         }
-
-        setIsWaitlist(data && data.length > 0);
     };
 
     const handleSubmit = async (e) => {
@@ -98,9 +128,29 @@ const BookAppointment = () => {
             const selectedService = services.find(s => s.id === formData.service_id);
             if (!selectedService) throw new Error('Hizmet seçilmedi');
 
-            if (isWaitlist) {
-                // Join Waiting List
-                const { error } = await supabase.from('waiting_list').insert([{
+            const startTime = new Date(`${formData.date}T${formData.time}`);
+            const endTime = new Date(startTime.getTime() + selectedService.duration * 60000);
+
+            if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+                throw new Error('Geçersiz tarih veya saat seçimi');
+            }
+
+            // Son Kontrol: Çakışma var mı? (Aralık sorgusu ile global kontrol)
+            const { count: conflictCount, error: checkError } = await supabase
+                .from('appointments')
+                .select('id', { count: 'exact', head: true })
+                .eq('tradesman_id', selectedService.tradesman_id)
+                .eq('status', 'confirmed')
+                .lt('start_time', endTime.toISOString())
+                .gt('end_time', startTime.toISOString());
+
+            if (checkError) throw checkError;
+
+            const isNowWaitlist = conflictCount > 0;
+
+            if (isWaitlist || isNowWaitlist) {
+                // Kayıt Engeli: Eğer o saat doluysa, appointments tablosuna ASLA kayıt atma.
+                const { error: waitlistError } = await supabase.from('waiting_list').insert([{
                     user_id: user.id,
                     tradesman_id: selectedService.tradesman_id,
                     service_id: selectedService.id,
@@ -108,13 +158,10 @@ const BookAppointment = () => {
                     status: 'waiting'
                 }]);
 
-                if (error) throw error;
-                alert('Bekleme listesine başarıyla eklendiniz! Randevu iptal olursa size haber vereceğiz.');
+                if (waitlistError) throw waitlistError;
+                alert(isNowWaitlist ? 'Bu saat az önce doldu, otomatik olarak bekleme listesine alındınız.' : 'Bekleme listesine başarıyla eklendiniz!');
             } else {
-                // Book Appointment
-                const startTime = new Date(`${formData.date}T${formData.time}`);
-                const endTime = new Date(startTime.getTime() + selectedService.duration * 60000);
-
+                // Randevuyu direkt onayla
                 await appointmentService.createAppointment({
                     customer_id: user.id,
                     tradesman_id: selectedService.tradesman_id,
@@ -122,9 +169,9 @@ const BookAppointment = () => {
                     start_time: startTime.toISOString(),
                     end_time: endTime.toISOString(),
                     notes: formData.notes,
-                    status: 'pending'
+                    status: 'confirmed'
                 });
-                alert('Randevunuz başarıyla oluşturuldu!');
+                alert('Randevunuz başarıyla oluşturuldu ve onaylandı!');
             }
 
             navigate('/dashboard');
@@ -132,6 +179,7 @@ const BookAppointment = () => {
             alert('Hata: ' + error.message);
         } finally {
             setSubmitting(false);
+            setLoading(false); // UI donmasını önlemek için
         }
     };
 
