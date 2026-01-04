@@ -69,7 +69,12 @@ const CustomerDashboard = () => {
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-gray-500">Yükleniyor...</div>;
+    if (loading) return (
+        <div className="flex justify-center items-center min-h-[50vh]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-2 text-gray-500">Yükleniyor...</p>
+        </div>
+    );
 
     return (
         <div className="max-w-5xl mx-auto p-6 space-y-8">
@@ -103,16 +108,16 @@ const CustomerDashboard = () => {
                     </div>
 
                     <div className="space-y-4">
-                        {upcomingAppointments.length > 0 ? (
-                            upcomingAppointments.map((apt) => (
-                                <div key={apt.id} className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                        {upcomingAppointments && Array.isArray(upcomingAppointments) && upcomingAppointments?.length > 0 ? (
+                            upcomingAppointments?.map((apt) => (
+                                <div key={apt?.id} className="p-4 bg-blue-50 rounded-lg border border-blue-100">
                                     <div className="font-semibold text-gray-900">
-                                        {apt.tradesman?.business_name || apt.tradesman?.full_name}
+                                        {apt?.tradesman?.business_name || apt?.tradesman?.full_name}
                                     </div>
                                     <div className="text-sm text-gray-600 flex justify-between mt-1">
-                                        <span>{apt.service?.name}</span>
+                                        <span>{apt?.service?.name}</span>
                                         <span className="font-medium text-blue-700">
-                                            {new Date(apt.start_time).toLocaleDateString()} - {new Date(apt.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            {apt?.start_time ? new Date(apt.start_time).toLocaleDateString() : ''} - {apt?.start_time ? new Date(apt.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                         </span>
                                     </div>
                                 </div>
@@ -138,18 +143,18 @@ const CustomerDashboard = () => {
                     </div>
 
                     <div className="space-y-4">
-                        {waitingList.length > 0 ? (
-                            waitingList.map((item) => (
-                                <div key={item.id} className="p-4 bg-orange-50 rounded-lg border border-orange-100 relative">
+                        {waitingList && Array.isArray(waitingList) && waitingList?.length > 0 ? (
+                            waitingList?.map((item) => (
+                                <div key={item?.id} className="p-4 bg-orange-50 rounded-lg border border-orange-100 relative">
                                     <div className="font-semibold text-gray-900 pr-16">
-                                        {item.tradesman?.business_name || item.tradesman?.full_name}
+                                        {item?.tradesman?.business_name || item?.tradesman?.full_name}
                                     </div>
                                     <div className="text-sm text-gray-600 mt-1">
-                                        {item.service?.name}
+                                        {item?.service?.name}
                                     </div>
-                                    <span className={`absolute top-4 right-4 text-xs font-medium px-2 py-1 rounded-full ${item.status === 'notified' ? 'bg-green-100 text-green-700' : 'bg-white text-orange-600 border border-orange-200'
+                                    <span className={`absolute top-4 right-4 text-xs font-medium px-2 py-1 rounded-full ${item?.status === 'notified' ? 'bg-green-100 text-green-700' : 'bg-white text-orange-600 border border-orange-200'
                                         }`}>
-                                        {item.status === 'notified' ? 'Sıra Geldi!' : 'Bekleniyor'}
+                                        {item?.status === 'notified' ? 'Sıra Geldi!' : 'Bekleniyor'}
                                     </span>
                                 </div>
                             ))

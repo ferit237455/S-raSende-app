@@ -44,7 +44,7 @@ const Sidebar = () => {
             </div>
 
             <nav className="flex-1 p-4 space-y-1">
-                {navItems.map((item) => (
+                {navItems?.map((item) => (
                     <NavLink
                         key={item.path}
                         to={item.path}

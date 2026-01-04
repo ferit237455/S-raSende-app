@@ -58,39 +58,95 @@ const History = () => {
 
     const handleCancelAppointment = async (id) => {
         if (!window.confirm('Bu randevuyu iptal etmek istediğinize emin misiniz?')) return;
+        setLoading(true);
 
         try {
-            const { error } = await supabase
+            // 1. Get appointment details first
+            const { data: apt, error: fetchError } = await supabase
+                .from('appointments')
+                .select('start_time, tradesman_id, customer_id')
+                .eq('id', id)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            // 2. Cancel the appointment
+            const { error: cancelError } = await supabase
                 .from('appointments')
                 .update({ status: 'cancelled' })
                 .eq('id', id);
 
-            if (error) throw error;
+            if (cancelError) throw cancelError;
+
+            // 3. Notify Waitlist (Check someone else waiting for same slot)
+            const cancelDate = apt.start_time.split('T')[0];
+            const { data: waitingQueue, error: queueError } = await supabase
+                .from('waiting_list')
+                .select('id, user_id')
+                .eq('tradesman_id', apt.tradesman_id)
+                .eq('preferred_date', cancelDate)
+                .eq('status', 'waiting');
+
+            if (!queueError && waitingQueue?.length > 0) {
+                // Update their status to notified
+                const idsToNotify = waitingQueue.map(w => w.id);
+                await supabase
+                    .from('waiting_list')
+                    .update({ status: 'notified' })
+                    .in('id', idsToNotify);
+
+                // Create app notifications for them
+                const notifications = waitingQueue.map(w => ({
+                    user_id: w.user_id,
+                    message: 'Beklediğiniz tarihte bir boşluk oluştu! Randevu alabilirsiniz.',
+                    is_read: false
+                }));
+                await supabase.from('notifications').insert(notifications);
+
+                alert(`Randevunuz iptal edildi. Bekleme listesindeki ${waitingQueue.length} kişi bilgilendirildi.`);
+            } else {
+                alert('Randevunuz iptal edildi.');
+            }
+
+            // 4. Automatic Cleanup: If CURRENT customer had a waitlist entry for this same date/tradesman, mark it as resolved
+            await supabase
+                .from('waiting_list')
+                .delete() // Better to delete as they already got/cancelled this appointment
+                .eq('user_id', apt.customer_id)
+                .eq('tradesman_id', apt.tradesman_id)
+                .eq('preferred_date', cancelDate);
 
             // Update local state
-            setAppointments(appointments.map(apt =>
+            setAppointments(appointments?.map(apt =>
                 apt.id === id ? { ...apt, status: 'cancelled' } : apt
-            ));
-            alert('Randevunuz iptal edildi.');
+            ) || []);
+
+            // Refresh waiting list too
+            fetchData();
+
         } catch (error) {
             console.error('İptal hatası:', error);
             alert('İptal edilemedi: ' + error.message);
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleDeleteWaitlist = async (id) => {
         if (!window.confirm('Bekleme listesinden çıkmak istediğinize emin misiniz?')) return;
+        setLoading(true);
         try {
-            const { error } = await supabase.from('waiting_list').delete().eq('id', id);
-            if (error) throw error;
-            setWaitingList(waitingList.filter(item => item.id !== id));
+            setWaitingList(waitingList?.filter(item => item?.id !== id) || []);
         } catch (error) {
             alert('Silinemedi: ' + error.message);
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleClearCancelled = async () => {
         if (!window.confirm('İptal edilen tüm randevularınız silinecektir. Bu işlem geri alınamaz. Emin misiniz?')) return;
+        setLoading(true);
 
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -104,18 +160,26 @@ const History = () => {
 
             if (error) throw error;
 
-            setAppointments(appointments.filter(a => a.status !== 'cancelled'));
+            setAppointments(appointments?.filter(a => a?.status !== 'cancelled') || []);
             alert('İptal edilen randevular temizlendi.');
         } catch (error) {
             console.error('Silme hatası:', error);
             alert('Silinemedi (Yetki sorunu olabilir, lütfen SQL güncellemesini yapın). Hata: ' + error.message);
+        } finally {
+            setLoading(false);
         }
     };
 
     if (loading) return (
         <div className="flex justify-center items-center min-h-[50vh]">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-2 text-gray-500">Yükleniyor...</p>
         </div>
+    );
+
+    // Simplified error check (History already has console logs, but adding a basic UI guard)
+    if (!appointments && !waitingList) return (
+        <div className="p-8 text-center text-gray-500">Veriler yüklenemedi.</div>
     );
 
     return (
@@ -152,44 +216,44 @@ const History = () => {
                             </button>
                         </div>
                     )}
-                    {appointments.length > 0 ? (
-                        appointments.map((apt) => (
-                            <div key={apt.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition">
+                    {appointments && Array.isArray(appointments) && appointments?.length > 0 ? (
+                        appointments?.map((apt) => (
+                            <div key={apt?.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition">
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                     <div className="flex items-start gap-4">
-                                        <div className={`p-3 rounded-lg ${apt.status === 'confirmed' ? 'bg-green-100 text-green-600' :
-                                            apt.status === 'cancelled' ? 'bg-red-100 text-red-600' :
+                                        <div className={`p-3 rounded-lg ${apt?.status === 'confirmed' ? 'bg-green-100 text-green-600' :
+                                            apt?.status === 'cancelled' ? 'bg-red-100 text-red-600' :
                                                 'bg-blue-100 text-blue-600'
                                             }`}>
                                             <Calendar size={24} />
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-lg text-gray-900">
-                                                {apt.tradesman?.business_name || apt.tradesman?.full_name || 'Bilinmeyen İşletme'}
+                                                {apt?.tradesman?.business_name || apt?.tradesman?.full_name || 'Bilinmeyen İşletme'}
                                             </h3>
                                             <div className="flex items-center gap-2 text-gray-600 mt-1">
-                                                <span className="font-medium text-gray-900">{apt.service?.name}</span>
+                                                <span className="font-medium text-gray-900">{apt?.service?.name}</span>
                                                 <span className="text-gray-300">•</span>
-                                                <span>{new Date(apt.start_time).toLocaleDateString('tr-TR')}</span>
+                                                <span>{apt?.start_time ? new Date(apt.start_time).toLocaleDateString('tr-TR') : ''}</span>
                                                 <span className="text-gray-300">•</span>
-                                                <span>{new Date(apt.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                <span>{apt?.start_time ? new Date(apt.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <span className={`px-4 py-1.5 rounded-full text-sm font-semibold capitalize ${apt.status === 'confirmed' ? 'bg-green-50 text-green-700 border border-green-100' :
-                                        apt.status === 'cancelled' ? 'bg-red-50 text-red-700 border border-red-100' :
+                                    <span className={`px-4 py-1.5 rounded-full text-sm font-semibold capitalize ${apt?.status === 'confirmed' ? 'bg-green-50 text-green-700 border border-green-100' :
+                                        apt?.status === 'cancelled' ? 'bg-red-50 text-red-700 border border-red-100' :
                                             'bg-yellow-50 text-yellow-700 border border-yellow-100'
                                         }`}>
-                                        {apt.status === 'pending' ? 'Onay Bekliyor' :
-                                            apt.status === 'confirmed' ? 'Onaylandı' :
-                                                apt.status === 'cancelled' ? 'İptal Edildi' : apt.status}
+                                        {apt?.status === 'pending' ? 'Onay Bekliyor' :
+                                            apt?.status === 'confirmed' ? 'Onaylandı' :
+                                                apt?.status === 'cancelled' ? 'İptal Edildi' : apt?.status}
                                     </span>
                                 </div>
-                                {apt.status !== 'cancelled' && new Date(apt.start_time) > new Date() && (
+                                {apt?.status !== 'cancelled' && apt?.start_time && new Date(apt.start_time) > new Date() && (
                                     <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
                                         <button
-                                            onClick={() => handleCancelAppointment(apt.id)}
+                                            onClick={() => handleCancelAppointment(apt?.id)}
                                             className="text-red-600 hover:text-red-700 text-sm font-medium hover:bg-red-50 px-3 py-1.5 rounded transition"
                                         >
                                             Randevuyu İptal Et
@@ -206,9 +270,9 @@ const History = () => {
 
             {activeTab === 'waiting' && (
                 <div className="space-y-4">
-                    {waitingList.length > 0 ? (
-                        waitingList.map((item) => (
-                            <div key={item.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition relative group">
+                    {waitingList && Array.isArray(waitingList) && waitingList?.length > 0 ? (
+                        waitingList?.map((item) => (
+                            <div key={item?.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition relative group">
                                 <div className="flex items-start gap-4">
                                     <div className="p-3 rounded-lg bg-orange-100 text-orange-600">
                                         <Clock size={24} />
@@ -217,19 +281,19 @@ const History = () => {
                                         <div className="flex justify-between items-start">
                                             <div>
                                                 <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2">
-                                                    {item.tradesman?.business_name || item.tradesman?.full_name}
+                                                    {item?.tradesman?.business_name || item?.tradesman?.full_name}
                                                     <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border">Esnaf</span>
                                                 </h3>
                                                 <p className="text-gray-600 mt-1">
-                                                    <span className="font-medium text-gray-900">{item.service?.name}</span> hizmeti için sıra bekleniyor.
+                                                    <span className="font-medium text-gray-900">{item?.service?.name}</span> hizmeti için sıra bekleniyor.
                                                 </p>
                                                 <p className="text-sm text-gray-500 mt-2 flex items-center gap-2">
                                                     <Calendar size={14} />
-                                                    Tercih Edilen Tarih: <span className="text-gray-700 font-medium">{new Date(item.preferred_date).toLocaleDateString('tr-TR')}</span>
+                                                    Tercih Edilen Tarih: <span className="text-gray-700 font-medium">{item?.preferred_date ? new Date(item.preferred_date).toLocaleDateString('tr-TR') : ''}</span>
                                                 </p>
                                             </div>
                                             <button
-                                                onClick={() => handleDeleteWaitlist(item.id)}
+                                                onClick={() => handleDeleteWaitlist(item?.id)}
                                                 className="text-red-500 hover:bg-red-50 p-2 rounded-lg text-sm font-medium transition opacity-0 group-hover:opacity-100"
                                             >
                                                 Listeden Çık
@@ -238,11 +302,11 @@ const History = () => {
 
                                         <div className="mt-4 pt-4 border-t flex items-center justify-between">
                                             <span className="text-xs text-gray-400">
-                                                Eklenme: {new Date(item.created_at).toLocaleDateString('tr-TR')}
+                                                Eklenme: {item?.created_at ? new Date(item.created_at).toLocaleDateString('tr-TR') : ''}
                                             </span>
-                                            <span className={`text-sm font-medium px-3 py-1 rounded-full ${item.status === 'notified' ? 'bg-green-100 text-green-700' : 'bg-orange-50 text-orange-700'
+                                            <span className={`text-sm font-medium px-3 py-1 rounded-full ${item?.status === 'notified' ? 'bg-green-100 text-green-700' : 'bg-orange-50 text-orange-700'
                                                 }`}>
-                                                {item.status === 'notified' ? 'Bildirim Gönderildi' : 'Sıra Bekleniyor'}
+                                                {item?.status === 'notified' ? 'Bildirim Gönderildi' : 'Sıra Bekleniyor'}
                                             </span>
                                         </div>
                                     </div>

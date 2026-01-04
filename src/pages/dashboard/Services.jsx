@@ -5,6 +5,7 @@ import { Trash2, Plus, Clock, DollarSign } from 'lucide-react';
 const Services = () => {
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [isAdding, setIsAdding] = useState(false);
     const [newService, setNewService] = useState({ name: '', duration: 30, price: 0, description: '' });
 
@@ -27,6 +28,7 @@ const Services = () => {
             setServices(data || []);
         } catch (error) {
             console.error('Error fetching services:', error);
+            setError('Hizmetler yüklenirken bir hata oluştu.');
         } finally {
             setLoading(false);
         }
@@ -75,6 +77,25 @@ const Services = () => {
             alert('Silinemedi: ' + error.message);
         }
     };
+
+    if (loading) return (
+        <div className="flex justify-center items-center min-h-[50vh]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-2 text-gray-500">Yükleniyor...</p>
+        </div>
+    );
+
+    if (error) return (
+        <div className="p-8 text-center">
+            <div className="bg-red-50 text-red-700 p-4 rounded-lg inline-block border border-red-100">
+                <p className="font-semibold">Bir hata oluştu!</p>
+                <p className="text-sm mt-1">{error}</p>
+                <button onClick={() => window.location.reload()} className="mt-3 text-sm bg-white px-3 py-1 rounded border border-red-200 hover:bg-red-100 transition">
+                    Sayfayı Yenile
+                </button>
+            </div>
+        </div>
+    );
 
     return (
         <div>
@@ -151,28 +172,26 @@ const Services = () => {
                 </div>
             )}
 
-            {loading ? (
-                <div className="text-center py-10">Yükleniyor...</div>
-            ) : services.length === 0 ? (
+            {!services || !Array.isArray(services) || services?.length === 0 ? (
                 <div className="text-center py-10 text-gray-500 bg-white rounded-lg shadow">Henüz hiç hizmet eklenmemiş.</div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {services.map((service) => (
-                        <div key={service.id} className="bg-white p-6 rounded-lg shadow hover:shadow-md transition border border-gray-100 relative group">
-                            <h3 className="text-xl font-bold text-gray-800 mb-2">{service.name}</h3>
-                            <p className="text-gray-600 text-sm mb-4 min-h-[40px]">{service.description || 'Açıklama yok.'}</p>
+                    {services && Array.isArray(services) && services?.map((service) => (
+                        <div key={service?.id} className="bg-white p-6 rounded-lg shadow hover:shadow-md transition border border-gray-100 relative group">
+                            <h3 className="text-xl font-bold text-gray-800 mb-2">{service?.name}</h3>
+                            <p className="text-gray-600 text-sm mb-4 min-h-[40px]">{service?.description || 'Açıklama yok.'}</p>
 
                             <div className="flex items-center gap-4 text-gray-500 text-sm mb-4">
                                 <div className="flex items-center gap-1">
-                                    <Clock size={16} /> {service.duration} dk
+                                    <Clock size={16} /> {service?.duration} dk
                                 </div>
                                 <div className="flex items-center gap-1 font-semibold text-green-600">
-                                    <DollarSign size={16} /> {service.price} TL
+                                    <DollarSign size={16} /> {service?.price} TL
                                 </div>
                             </div>
 
                             <button
-                                onClick={() => handleDelete(service.id)}
+                                onClick={() => handleDelete(service?.id)}
                                 className="absolute top-4 right-4 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
                                 title="Sil"
                             >

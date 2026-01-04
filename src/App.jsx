@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from './services/supabase';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './layouts/Layout';
 import LandingPage from './pages/LandingPage';
@@ -23,6 +24,38 @@ import ProtectedRoute from './routes/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
 
 function App() {
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error || !session) {
+          // If session is problematic or missing, clear specific auth keys to avoid corrupted states
+          Object.keys(localStorage).forEach(key => {
+            if (key.includes('supabase.auth.token') || key.startsWith('sb-')) {
+              localStorage.removeItem(key);
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Initial session check error:', error);
+        localStorage.clear(); // Extreme recovery: clear everything
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+    checkSession();
+  }, []);
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
     <AuthProvider>
       <NotificationProvider>

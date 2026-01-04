@@ -42,21 +42,21 @@ const WaitingList = () => {
         try {
             const { error } = await supabase.from('waiting_list').delete().eq('id', id);
             if (error) throw error;
-            setWaitingItems(waitingItems.filter(item => item.id !== id));
+            setWaitingItems(waitingItems?.filter(item => item?.id !== id) || []);
         } catch (error) {
-            alert('Silinemedi: ' + error.message);
+            alert('Silinemedi: ' + error?.message);
         }
     };
 
 
 
     // Group items by service name
-    const groupedItems = waitingItems.reduce((acc, item) => {
-        const serviceName = item.service?.name || 'Diğer Hizmetler';
+    const groupedItems = waitingItems?.reduce((acc, item) => {
+        const serviceName = item?.service?.name || 'Diğer Hizmetler';
         if (!acc[serviceName]) acc[serviceName] = [];
         acc[serviceName].push(item);
         return acc;
-    }, {});
+    }, {}) || {};
 
 
     const handleCleanup = async () => {
@@ -94,7 +94,16 @@ const WaitingList = () => {
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-gray-500">Yükleniyor...</div>;
+    if (loading) return (
+        <div className="flex justify-center items-center min-h-[50vh]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-2 text-gray-500">Yükleniyor...</p>
+        </div>
+    );
+
+    if (!waitingItems) return (
+        <div className="p-8 text-center text-gray-500">Bekleme listesi yüklenemedi.</div>
+    );
 
     return (
         <div className="p-8 max-w-7xl mx-auto">
@@ -119,8 +128,8 @@ const WaitingList = () => {
             </div>
 
             <div className="space-y-8">
-                {Object.keys(groupedItems).length > 0 ? (
-                    Object.entries(groupedItems).map(([serviceName, items]) => (
+                {Object.keys(groupedItems || {}).length > 0 ? (
+                    Object.entries(groupedItems || {}).map(([serviceName, items]) => (
                         <div key={serviceName} className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
                             <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
@@ -143,27 +152,27 @@ const WaitingList = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {items.map((item) => (
-                                            <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                                        {items && Array.isArray(items) && items?.map((item) => (
+                                            <tr key={item?.id} className="hover:bg-gray-50 transition-colors">
                                                 <td className="p-4">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-bold">
-                                                            {item.customer?.full_name?.charAt(0) || 'U'}
+                                                            {item?.customer?.full_name?.charAt(0) || 'U'}
                                                         </div>
                                                         <div>
-                                                            <div className="font-medium text-gray-900">{item.customer?.full_name || 'İsimsiz'}</div>
-                                                            <div className="text-xs text-gray-400">{new Date(item.created_at).toLocaleDateString()}</div>
+                                                            <div className="font-medium text-gray-900">{item?.customer?.full_name || 'İsimsiz'}</div>
+                                                            <div className="text-xs text-gray-400">{item?.created_at ? new Date(item.created_at).toLocaleDateString() : ''}</div>
                                                         </div>
                                                     </div>
                                                 </td>
                                                 <td className="p-4">
                                                     <div className="flex flex-col gap-1">
-                                                        {item.customer?.phone_number && (
+                                                        {item?.customer?.phone_number && (
                                                             <a href={`tel:${item.customer.phone_number}`} className="flex items-center gap-1 text-sm text-gray-600 hover:text-blue-600">
                                                                 <Phone size={14} /> {item.customer.phone_number}
                                                             </a>
                                                         )}
-                                                        {item.customer?.email && (
+                                                        {item?.customer?.email && (
                                                             <a href={`mailto:${item.customer.email}`} className="flex items-center gap-1 text-sm text-gray-600 hover:text-blue-600">
                                                                 <Mail size={14} /> {item.customer.email}
                                                             </a>
@@ -173,22 +182,22 @@ const WaitingList = () => {
                                                 <td className="p-4">
                                                     <div className="flex items-center gap-2 text-gray-700 font-medium bg-gray-50 px-3 py-1 rounded-lg w-fit">
                                                         <Calendar size={16} className="text-gray-400" />
-                                                        {new Date(item.preferred_date).toLocaleDateString('tr-TR')}
+                                                        {item?.preferred_date ? new Date(item.preferred_date).toLocaleDateString('tr-TR') : ''}
                                                     </div>
                                                 </td>
                                                 <td className="p-4">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.status === 'notified'
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item?.status === 'notified'
                                                         ? 'bg-green-100 text-green-800'
                                                         : 'bg-orange-100 text-orange-800'
                                                         }`}>
-                                                        {item.status === 'notified' ? 'Bildirildi' : 'Bekliyor'}
+                                                        {item?.status === 'notified' ? 'Bildirildi' : 'Bekliyor'}
                                                     </span>
                                                 </td>
                                                 <td className="p-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
 
                                                         <button
-                                                            onClick={() => handleDelete(item.id)}
+                                                            onClick={() => handleDelete(item?.id)}
                                                             className="text-gray-400 hover:text-red-600 p-2 rounded-lg transition hover:bg-red-50"
                                                             title="Listeden Çıkar"
                                                         >

@@ -7,6 +7,7 @@ const BookAppointment = () => {
     const [searchParams] = useSearchParams();
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [formData, setFormData] = useState({
         service_id: searchParams.get('serviceId') || '',
@@ -65,6 +66,9 @@ const BookAppointment = () => {
             setServices(data || []);
         } catch (error) {
             console.error('Error fetching services:', error);
+            setError('Hizmetler yüklenirken bir hata oluştu.');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -183,6 +187,25 @@ const BookAppointment = () => {
         }
     };
 
+    if (loading) return (
+        <div className="flex justify-center items-center min-h-[50vh]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-2 text-gray-500">Yükleniyor...</p>
+        </div>
+    );
+
+    if (error) return (
+        <div className="max-w-2xl mx-auto p-8 text-center">
+            <div className="bg-red-50 text-red-700 p-6 rounded-xl border border-red-100">
+                <p className="font-bold text-lg">Bir Sorun Oluştur!</p>
+                <p className="mt-2 text-sm">{error}</p>
+                <button onClick={() => window.location.reload()} className="mt-4 bg-white text-red-600 px-4 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition font-medium">
+                    Sayfayı Yenile
+                </button>
+            </div>
+        </div>
+    );
+
     return (
         <div className="max-w-2xl mx-auto p-8">
             <h1 className="text-3xl font-bold mb-8">Randevu Oluştur</h1>
@@ -197,13 +220,13 @@ const BookAppointment = () => {
                         required
                     >
                         <option value="">Hizmet Seçiniz...</option>
-                        {services.map(service => (
-                            <option key={service.id} value={service.id}>
-                                {service.name} - {service.price} TL ({service.duration} dk) - {service.tradesman?.business_name || service.tradesman?.full_name}
+                        {services && Array.isArray(services) && services?.map(service => (
+                            <option key={service?.id} value={service?.id}>
+                                {service?.name} - {service?.price} TL ({service?.duration} dk) - {service?.tradesman?.business_name || service?.tradesman?.full_name}
                             </option>
                         ))}
                     </select>
-                    {services.length === 0 && <p className="text-sm text-red-500 mt-1">Görünürde hiç hizmet yok. Önce bir esnaf olarak hizmet eklemelisiniz.</p>}
+                    {(!services || services?.length === 0) && <p className="text-sm text-red-500 mt-1">Görünürde hiç hizmet yok. Önce bir esnaf olarak hizmet eklemelisiniz.</p>}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

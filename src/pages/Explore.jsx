@@ -95,6 +95,13 @@ const Explore = () => {
         return matchesSearch && matchesCategory;
     });
 
+    if (loading) return (
+        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-500 font-medium">Yükleniyor...</p>
+        </div>
+    );
+
     if (error) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -130,7 +137,7 @@ const Explore = () => {
             <div className="max-w-7xl mx-auto px-4 -mt-16 pb-12">
                 {/* Categories */}
                 <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide mb-4">
-                    {staticCategories.map(cat => (
+                    {staticCategories && Array.isArray(staticCategories) && staticCategories?.map(cat => (
                         <button
                             key={cat}
                             onClick={() => setSelectedCategory(cat)}
@@ -145,68 +152,60 @@ const Explore = () => {
                 </div>
 
                 {/* Grid */}
-                {loading ? (
-                    <div className="text-center py-12">
-                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent"></div>
-                        <p className="mt-2 text-gray-500">Yükleniyor...</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {filteredTradesmen && filteredTradesmen.length > 0 ? (
-                            filteredTradesmen.map((tradesman) => (
-                                <div key={tradesman.id || Math.random()} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition">
-                                    <div className="h-28 bg-gray-100 relative">
-                                        <div className="absolute inset-0 flex items-center justify-center text-gray-300">
-                                            {/* Pattern or placeholder */}
-                                            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                        </div>
-                                        <div className="absolute -bottom-6 left-6">
-                                            <div className="w-16 h-16 bg-white rounded-lg p-1 shadow-md">
-                                                <div className="w-full h-full bg-blue-50 rounded flex items-center justify-center text-blue-600 font-bold text-xl uppercase">
-                                                    {(tradesman.business_name || tradesman.full_name || '?').charAt(0)}
-                                                </div>
-                                            </div>
-                                        </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredTradesmen && Array.isArray(filteredTradesmen) && filteredTradesmen.length > 0 ? (
+                        filteredTradesmen?.map((tradesman) => (
+                            <div key={tradesman?.id || Math.random()} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition">
+                                <div className="h-28 bg-gray-100 relative">
+                                    <div className="absolute inset-0 flex items-center justify-center text-gray-300">
+                                        <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                                     </div>
-                                    <div className="pt-8 px-6 pb-6">
-                                        <h3 className="text-lg font-bold text-gray-900 mb-1 truncate">
-                                            {tradesman.business_name || tradesman.full_name || 'İsimsiz Dükkan'}
-                                        </h3>
-                                        <p className="text-xs text-gray-500 mb-4 flex items-center gap-1">
-                                            <MapPin size={12} /> İstanbul
-                                            <span className="mx-1">•</span>
-                                            <span className="text-blue-600 font-medium">{tradesman.category}</span>
-                                        </p>
-
-                                        <div className="space-y-2 mb-6 min-h-[60px]">
-                                            <div className="flex flex-wrap gap-2">
-                                                {tradesman.services?.slice(0, 3).map((service, idx) => (
-                                                    <span key={service.id || idx} className="px-2 py-1 bg-gray-50 text-gray-600 text-xs rounded border border-gray-100">
-                                                        {service.name}
-                                                    </span>
-                                                ))}
-                                                {(!tradesman.services || tradesman.services.length === 0) && (
-                                                    <span className="text-xs text-gray-400 italic">Hizmet bilgisi yok</span>
-                                                )}
+                                    <div className="absolute -bottom-6 left-6">
+                                        <div className="w-16 h-16 bg-white rounded-lg p-1 shadow-md">
+                                            <div className="w-full h-full bg-blue-50 rounded flex items-center justify-center text-blue-600 font-bold text-xl uppercase">
+                                                {(tradesman?.business_name || tradesman?.full_name || '?').charAt(0)}
                                             </div>
                                         </div>
-
-                                        <button
-                                            onClick={() => navigate(`/shop/${tradesman.id}`)}
-                                            className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium text-sm"
-                                        >
-                                            Dükkanı İncele
-                                        </button>
                                     </div>
                                 </div>
-                            ))
-                        ) : (
-                            <div className="col-span-full text-center py-12 bg-white rounded-lg border border-dashed border-gray-300 text-gray-500">
-                                Aradığınız kriterlere uygun dükkan bulunamadı.
+                                <div className="pt-8 px-6 pb-6">
+                                    <h3 className="text-lg font-bold text-gray-900 mb-1 truncate">
+                                        {tradesman?.business_name || tradesman?.full_name || 'İsimsiz Dükkan'}
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mb-4 flex items-center gap-1">
+                                        <MapPin size={12} /> İstanbul
+                                        <span className="mx-1">•</span>
+                                        <span className="text-blue-600 font-medium">{tradesman?.category}</span>
+                                    </p>
+
+                                    <div className="space-y-2 mb-6 min-h-[60px]">
+                                        <div className="flex flex-wrap gap-2">
+                                            {tradesman?.services && Array.isArray(tradesman.services) && tradesman?.services?.slice(0, 3)?.map((service, idx) => (
+                                                <span key={service?.id || idx} className="px-2 py-1 bg-gray-50 text-gray-600 text-xs rounded border border-gray-100">
+                                                    {service?.name}
+                                                </span>
+                                            ))}
+                                            {(!tradesman?.services || tradesman?.services?.length === 0) && (
+                                                <span className="text-xs text-gray-400 italic">Hizmet bilgisi yok</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={() => navigate(`/shop/${tradesman?.id}`)}
+                                        className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium text-sm"
+                                    >
+                                        Dükkanı İncele
+                                    </button>
+                                </div>
                             </div>
-                        )}
-                    </div>
-                )}
+                        ))
+                    ) : (
+                        <div className="col-span-full text-center py-12 bg-white rounded-lg border border-dashed border-gray-300 text-gray-500">
+                            Aradığınız kriterlere uygun dükkan bulunamadı.
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

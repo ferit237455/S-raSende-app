@@ -9,6 +9,7 @@ const ShopDetail = () => {
     const [shop, setShop] = useState(null);
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
         fetchShopDetails();
@@ -39,8 +40,9 @@ const ShopDetail = () => {
             if (servicesError) throw servicesError;
             setServices(servicesData || []);
 
-        } catch (error) {
-            console.error('Error details:', error);
+        } catch (err) {
+            console.error('Error details:', err);
+            setError('Dükkan detayları yüklenirken bir hata oluştu.');
         } finally {
             setLoading(false);
         }
@@ -52,8 +54,26 @@ const ShopDetail = () => {
         navigate(`/book-appointment?tradesmanId=${id}&serviceId=${serviceId}`);
     };
 
-    if (loading) return <div className="p-8 text-center bg-gray-50 h-full">Yükleniyor...</div>;
-    if (!shop) return <div className="p-8 text-center text-red-500 bg-gray-50 h-full">Dükkan bulunamadı.</div>;
+    if (loading) return (
+        <div className="flex justify-center items-center min-h-[50vh]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-2 text-gray-500">Yükleniyor...</p>
+        </div>
+    );
+
+    if (error) return (
+        <div className="max-w-4xl mx-auto p-8 text-center bg-white rounded-lg shadow my-6">
+            <div className="bg-red-50 text-red-700 p-6 rounded-xl border border-red-100 inline-block">
+                <p className="font-bold text-lg">Bir Sorun Oluştur!</p>
+                <p className="mt-2 text-sm">{error}</p>
+                <button onClick={() => window.location.reload()} className="mt-4 bg-white text-red-600 px-4 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition font-medium">
+                    Sayfayı Yenile
+                </button>
+            </div>
+        </div>
+    );
+
+    if (!shop) return <div className="p-8 text-center text-red-500 bg-gray-50 h-[50vh] flex items-center justify-center">Dükkan bulunamadı.</div>;
 
     return (
         <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 my-6">
@@ -80,19 +100,19 @@ const ShopDetail = () => {
                         <h2 className="text-xl font-bold text-gray-800 mb-4">Hizmetler</h2>
 
                         <div className="space-y-4">
-                            {services.map(service => (
-                                <div key={service.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg bg-gray-50 hover:bg-white hover:shadow-md transition border border-gray-100 group px-5 py-4">
+                            {services && Array.isArray(services) && services?.map(service => (
+                                <div key={service?.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-lg bg-gray-50 hover:bg-white hover:shadow-md transition border border-gray-100 group px-5 py-4">
                                     <div className="mb-2 sm:mb-0">
-                                        <h3 className="font-bold text-gray-900 text-lg">{service.name}</h3>
-                                        <p className="text-sm text-gray-500 mt-1">{service.description}</p>
+                                        <h3 className="font-bold text-gray-900 text-lg">{service?.name}</h3>
+                                        <p className="text-sm text-gray-500 mt-1">{service?.description}</p>
                                         <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
-                                            <span className="flex items-center gap-1"><Clock size={14} /> {service.duration} dk</span>
+                                            <span className="flex items-center gap-1"><Clock size={14} /> {service?.duration} dk</span>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4 mt-2 sm:mt-0">
-                                        <span className="font-bold text-blue-600 text-lg">{service.price} TL</span>
+                                        <span className="font-bold text-blue-600 text-lg">{service?.price} TL</span>
                                         <button
-                                            onClick={() => handleBookService(service.id)}
+                                            onClick={() => handleBookService(service?.id)}
                                             className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition shadow-sm opacity-90 hover:opacity-100"
                                         >
                                             Randevu Al
@@ -100,7 +120,7 @@ const ShopDetail = () => {
                                     </div>
                                 </div>
                             ))}
-                            {services.length === 0 && (
+                            {(!services || services?.length === 0) && (
                                 <p className="text-gray-500">Bu dükkan için henüz hizmet eklenmemiş.</p>
                             )}
                         </div>

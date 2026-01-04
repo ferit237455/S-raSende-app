@@ -5,6 +5,7 @@ import { profileService } from '../../services/profiles';
 const Profile = () => {
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [formData, setFormData] = useState({
         full_name: '',
@@ -35,6 +36,7 @@ const Profile = () => {
             }
         } catch (error) {
             console.error('Error fetching profile:', error);
+            setError('Profil bilgileri yüklenirken bir hata oluştu.');
         } finally {
             setLoading(false);
         }
@@ -63,7 +65,24 @@ const Profile = () => {
         }
     };
 
-    if (loading) return <div className="p-8">Yükleniyor...</div>;
+    if (loading) return (
+        <div className="flex justify-center items-center min-h-[50vh]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-2 text-gray-500">Yükleniyor...</p>
+        </div>
+    );
+
+    if (error) return (
+        <div className="max-w-2xl mx-auto p-8 text-center bg-white rounded-lg shadow mt-8">
+            <div className="bg-red-50 text-red-700 p-6 rounded-xl border border-red-100 inline-block">
+                <p className="font-bold text-lg">Bir Sorun Oluştur!</p>
+                <p className="mt-2 text-sm">{error}</p>
+                <button onClick={() => window.location.reload()} className="mt-4 bg-white text-red-600 px-4 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition font-medium">
+                    Sayfayı Yenile
+                </button>
+            </div>
+        </div>
+    );
 
     return (
         <div className="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow">
