@@ -11,6 +11,7 @@ import CalendarPage from './pages/dashboard/Calendar';
 import WaitingList from './pages/dashboard/WaitingList';
 import Services from './pages/dashboard/Services';
 import Customers from './pages/dashboard/Customers';
+import MyShop from './pages/dashboard/MyShop';
 import BookAppointment from './pages/appointment/BookAppointment';
 import History from './pages/customer/History';
 import ShopDetail from './pages/customer/ShopDetail';
@@ -78,6 +79,7 @@ function App() {
                 <Route path="dashboard/waiting-list" element={<WaitingList />} />
                 <Route path="dashboard/services" element={<Services />} />
                 <Route path="dashboard/customers" element={<Customers />} />
+                <Route path="dashboard/my-shop" element={<MyShop />} />
 
                 {/* Customer Routes */}
                 <Route path="customer-dashboard" element={<Explore />} />

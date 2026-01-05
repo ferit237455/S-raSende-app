@@ -1,1 +1,37 @@
 @import "tailwindcss";
+
+@theme {
+    --color-brand-primary: hsl(217, 91%, 60%);
+    --color-brand-secondary: hsl(217, 91%, 45%);
+    --color-brand-accent: hsl(217, 91%, 50%);
+
+    --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+}
+
+@layer base {
+    body {
+        @apply bg-slate-50 text-slate-900 antialiased;
+    }
+}
+
+@layer components {
+    .glass-card {
+        @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-glass rounded-2xl;
+    }
+
+    .glass-input {
+        @apply bg-white/50 backdrop-blur-sm border border-slate-200 focus:border-brand-primary/50 focus:ring-4 focus:ring-brand-primary/10 transition-all rounded-xl;
+    }
+
+    .btn-primary {
+        @apply bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-brand-primary/25 hover:shadow-brand-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all;
+    }
+}
+
+.bg-mesh {
+    background-color: #f8fafc;
+    background-image:
+        radial-gradient(at 0% 0%, hsla(217, 100%, 95%, 1) 0, transparent 50%),
+        radial-gradient(at 50% 0%, hsla(217, 100%, 98%, 1) 0, transparent 50%),
+        radial-gradient(at 100% 0%, hsla(217, 100%, 95%, 1) 0, transparent 50%);
+}

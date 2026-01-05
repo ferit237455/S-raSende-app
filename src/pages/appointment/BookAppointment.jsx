@@ -1,290 +1,393 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../services/supabase';
-import { appointmentService } from '../../services/appointments';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Calendar, Clock, ChevronRight, CheckCircle2, AlertCircle, Info, ArrowLeft, ArrowRight, Users } from 'lucide-react';
 
 const BookAppointment = () => {
     const [searchParams] = useSearchParams();
+    const tradesmanId = searchParams.get('tradesmanId');
+    const initialServiceId = searchParams.get('serviceId');
+
+    const [tradesman, setTradesman] = useState(null);
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
     const [submitting, setSubmitting] = useState(false);
+    const [success, setSuccess] = useState(false);
+    const [error, setError] = useState(null);
+    const [isSlotAvailable, setIsSlotAvailable] = useState(true);
+    const [checkingAvailability, setCheckingAvailability] = useState(false);
+
     const [formData, setFormData] = useState({
-        service_id: searchParams.get('serviceId') || '',
+        service_id: initialServiceId || '',
         date: '',
         time: '',
-        notes: ''
     });
+
     const navigate = useNavigate();
+    const isMountedRef = useRef(true);
+    const availabilityCheckRef = useRef(null);
 
     useEffect(() => {
-        const checkAuthAndFetch = async () => {
-            setLoading(true);
-            setServices([]); // Her denemede temiz başla
-            try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) {
-                    navigate('/login');
-                    return;
-                }
-                await fetchServices();
-            } catch (error) {
-                console.error('Initial check failed:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
+        isMountedRef.current = true;
 
-        checkAuthAndFetch();
-
-        // Acil durum zaman aşımı
-        const timeout = setTimeout(() => setLoading(false), 5000);
-
-        const sId = searchParams.get('serviceId');
-        if (sId) {
-            setFormData(prev => ({ ...prev, service_id: sId }));
+        if (!tradesmanId) {
+            navigate('/explore');
+            return;
         }
 
-        return () => clearTimeout(timeout);
-    }, [searchParams, navigate]);
+        fetchData();
 
-    const fetchServices = async () => {
-        try {
-            const tradesmanId = searchParams.get('tradesmanId');
-
-            let query = supabase
-                .from('services')
-                .select(`*, tradesman:profiles!tradesman_id(full_name, business_name)`);
-
-            if (tradesmanId) {
-                query = query.eq('tradesman_id', tradesmanId);
+        return () => {
+            isMountedRef.current = false;
+            if (availabilityCheckRef.current) {
+                clearTimeout(availabilityCheckRef.current);
             }
+        };
+    }, [tradesmanId, navigate]);
 
-            const { data, error } = await query;
+    // Check availability when date, time, or service changes
+    useEffect(() => {
+        if (formData.date && formData.time && formData.service_id) {
+            // Debounce the availability check
+            if (availabilityCheckRef.current) {
+                clearTimeout(availabilityCheckRef.current);
+            }
+            availabilityCheckRef.current = setTimeout(() => {
+                checkAvailability();
+            }, 300);
+        } else {
+            setIsSlotAvailable(true);
+        }
 
-            if (error) throw error;
-            setServices(data || []);
-        } catch (error) {
-            console.error('Error fetching services:', error);
-            setError('Hizmetler yüklenirken bir hata oluştu.');
+        return () => {
+            if (availabilityCheckRef.current) {
+                clearTimeout(availabilityCheckRef.current);
+            }
+        };
+    }, [formData.date, formData.time, formData.service_id]);
+
+    const fetchData = async () => {
+        try {
+            const [profileResult, servicesResult] = await Promise.all([
+                supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', tradesmanId)
+                    .single(),
+                supabase
+                    .from('services')
+                    .select('*')
+                    .eq('tradesman_id', tradesmanId)
+            ]);
+
+            if (!isMountedRef.current) return;
+
+            if (profileResult.error) throw profileResult.error;
+            setTradesman(profileResult.data);
+
+            if (servicesResult.error) throw servicesResult.error;
+            setServices(servicesResult.data || []);
+        } catch (err) {
+            if (isMountedRef.current) {
+                setError('Veriler yüklenemedi.');
+            }
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
     };
 
-    const [isWaitlist, setIsWaitlist] = useState(false);
+    // Check availability in background
+    const checkAvailability = useCallback(async () => {
+        if (!formData.date || !formData.time || !formData.service_id) return;
 
-    useEffect(() => {
-        const runCheck = async () => {
-            if (formData.service_id && formData.date && formData.time) {
-                await checkAvailability();
-            } else {
-                setIsWaitlist(false);
-            }
-        };
-        runCheck();
-    }, [formData.date, formData.time, formData.service_id]);
-
-    const checkAvailability = async () => {
-        const selectedService = services.find(s => s.id === formData.service_id);
-        if (!selectedService || !formData.date || !formData.time) return;
+        setCheckingAvailability(true);
 
         try {
+            const selectedService = services.find(s => s.id === formData.service_id);
+            if (!selectedService) return;
+
             const startTime = new Date(`${formData.date}T${formData.time}`);
             const endTime = new Date(startTime.getTime() + selectedService.duration * 60000);
 
-            const startISO = startTime.toISOString();
-            const endISO = endTime.toISOString();
-
-            console.log('Kontrol edilen aralık:', formData.time, '-', endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-
-            // Aralık Sorgusu: Yeni randevunun aralığı mevcut randevularla çakışıyor mu?
-            const { count, error } = await supabase
+            const { data: existing, error: checkError } = await supabase
                 .from('appointments')
-                .select('id', { count: 'exact', head: true })
-                .eq('tradesman_id', selectedService.tradesman_id)
+                .select('id')
+                .eq('tradesman_id', tradesmanId)
                 .eq('status', 'confirmed')
-                .lt('start_time', endISO)
-                .gt('end_time', startISO);
+                .filter('start_time', 'lt', endTime.toISOString())
+                .filter('end_time', 'gt', startTime.toISOString());
 
-            if (error) throw error;
+            if (!isMountedRef.current) return;
 
-            const hasConflict = count > 0;
-            setIsWaitlist(hasConflict);
-            console.log('Saat dolu mu?:', hasConflict);
-        } catch (error) {
-            console.error('Müsaitlik kontrolü başarısız:', error);
+            if (checkError) throw checkError;
+
+            setIsSlotAvailable(!existing || existing.length === 0);
+        } catch (err) {
+            console.error('Availability check error:', err);
+            // Default to available on error
+            setIsSlotAvailable(true);
+        } finally {
+            if (isMountedRef.current) {
+                setCheckingAvailability(false);
+            }
         }
-    };
+    }, [formData.date, formData.time, formData.service_id, services, tradesmanId]);
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = useCallback(async (e) => {
         e.preventDefault();
         setSubmitting(true);
+        setError(null);
 
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                alert('İşlem yapmak için giriş yapmalısınız.');
                 navigate('/login');
                 return;
             }
 
             const selectedService = services.find(s => s.id === formData.service_id);
-            if (!selectedService) throw new Error('Hizmet seçilmedi');
+            if (!selectedService) throw new Error('Lütfen bir hizmet seçin.');
 
             const startTime = new Date(`${formData.date}T${formData.time}`);
             const endTime = new Date(startTime.getTime() + selectedService.duration * 60000);
 
-            if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
-                throw new Error('Geçersiz tarih veya saat seçimi');
-            }
+            if (isSlotAvailable) {
+                // Book appointment directly
+                const { error: bookError } = await supabase
+                    .from('appointments')
+                    .insert([{
+                        customer_id: user.id,
+                        tradesman_id: tradesmanId,
+                        service_id: formData.service_id,
+                        start_time: startTime.toISOString(),
+                        end_time: endTime.toISOString(),
+                        status: 'confirmed'
+                    }]);
 
-            // Son Kontrol: Çakışma var mı? (Aralık sorgusu ile global kontrol)
-            const { count: conflictCount, error: checkError } = await supabase
-                .from('appointments')
-                .select('id', { count: 'exact', head: true })
-                .eq('tradesman_id', selectedService.tradesman_id)
-                .eq('status', 'confirmed')
-                .lt('start_time', endTime.toISOString())
-                .gt('end_time', startTime.toISOString());
-
-            if (checkError) throw checkError;
-
-            const isNowWaitlist = conflictCount > 0;
-
-            if (isWaitlist || isNowWaitlist) {
-                // Kayıt Engeli: Eğer o saat doluysa, appointments tablosuna ASLA kayıt atma.
-                const { error: waitlistError } = await supabase.from('waiting_list').insert([{
-                    user_id: user.id,
-                    tradesman_id: selectedService.tradesman_id,
-                    service_id: selectedService.id,
-                    preferred_date: formData.date,
-                    status: 'waiting'
-                }]);
-
-                if (waitlistError) throw waitlistError;
-                alert(isNowWaitlist ? 'Bu saat az önce doldu, otomatik olarak bekleme listesine alındınız.' : 'Bekleme listesine başarıyla eklendiniz!');
+                if (bookError) throw bookError;
             } else {
-                // Randevuyu direkt onayla
-                await appointmentService.createAppointment({
-                    customer_id: user.id,
-                    tradesman_id: selectedService.tradesman_id,
-                    service_id: selectedService.id,
-                    start_time: startTime.toISOString(),
-                    end_time: endTime.toISOString(),
-                    notes: formData.notes,
-                    status: 'confirmed'
-                });
-                alert('Randevunuz başarıyla oluşturuldu ve onaylandı!');
+                // Add to waiting list directly (no confirmation needed)
+                const { error: waitError } = await supabase
+                    .from('waiting_list')
+                    .insert([{
+                        user_id: user.id,
+                        tradesman_id: tradesmanId,
+                        service_id: formData.service_id,
+                        preferred_date: formData.date
+                    }]);
+
+                if (waitError) throw waitError;
             }
 
-            navigate('/dashboard');
-        } catch (error) {
-            alert('Hata: ' + error.message);
+            if (isMountedRef.current) {
+                setSuccess(true);
+                setTimeout(() => navigate('/my-appointments'), 2000);
+            }
+        } catch (err) {
+            if (isMountedRef.current) {
+                setError(err?.message || 'Bir hata oluştu');
+            }
         } finally {
-            setSubmitting(false);
-            setLoading(false); // UI donmasını önlemek için
+            if (isMountedRef.current) {
+                setSubmitting(false);
+            }
         }
-    };
+    }, [formData, services, tradesmanId, isSlotAvailable, navigate]);
+
+    // Memoized button styles
+    const buttonStyles = useMemo(() => {
+        if (isSlotAvailable) {
+            return {
+                className: 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white',
+                text: 'Randevu Onayla',
+                icon: <ArrowRight size={20} />
+            };
+        }
+        return {
+            className: 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white',
+            text: 'Sıraya Gir',
+            icon: <Users size={20} />
+        };
+    }, [isSlotAvailable]);
 
     if (loading) return (
-        <div className="flex justify-center items-center min-h-[50vh]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="ml-2 text-gray-500">Yükleniyor...</p>
+        <div className="flex flex-col justify-center items-center min-h-[60vh] gap-4">
+            <div className="w-10 h-10 border-4 border-brand-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-slate-500 font-medium">Randevu Bilgileri Hazırlanıyor...</p>
         </div>
     );
 
-    if (error) return (
-        <div className="max-w-2xl mx-auto p-8 text-center">
-            <div className="bg-red-50 text-red-700 p-6 rounded-xl border border-red-100">
-                <p className="font-bold text-lg">Bir Sorun Oluştur!</p>
-                <p className="mt-2 text-sm">{error}</p>
-                <button onClick={() => window.location.reload()} className="mt-4 bg-white text-red-600 px-4 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition font-medium">
-                    Sayfayı Yenile
-                </button>
+    if (success) return (
+        <div className="min-h-[70vh] flex flex-col items-center justify-center px-4">
+            <div className="glass-card p-12 text-center max-w-md shadow-2xl border-green-100">
+                <div className="w-20 h-20 bg-green-100 text-green-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-inner">
+                    <CheckCircle2 size={40} />
+                </div>
+                <h2 className="text-3xl font-black text-slate-900 mb-3">İşlem Başarılı!</h2>
+                <p className="text-slate-500 font-medium mb-8">
+                    {isSlotAvailable
+                        ? 'Randevunuz başarıyla oluşturuldu.'
+                        : 'Bekleme listesine eklendiniz. Sıra size gelince bildirim alacaksınız.'
+                    }
+                </p>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-green-500 h-full animate-[progress_2s_ease-in-out]" />
+                </div>
             </div>
         </div>
     );
 
     return (
-        <div className="max-w-2xl mx-auto p-8">
-            <h1 className="text-3xl font-bold mb-8">Randevu Oluştur</h1>
-
-            <form onSubmit={handleSubmit} className="space-y-6 bg-white p-6 rounded-lg shadow">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Hizmet Seçin</label>
-                    <select
-                        className="w-full border rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-                        value={formData.service_id}
-                        onChange={(e) => setFormData({ ...formData, service_id: e.target.value })}
-                        required
-                    >
-                        <option value="">Hizmet Seçiniz...</option>
-                        {services && Array.isArray(services) && services?.map(service => (
-                            <option key={service?.id} value={service?.id}>
-                                {service?.name} - {service?.price} TL ({service?.duration} dk) - {service?.tradesman?.business_name || service?.tradesman?.full_name}
-                            </option>
-                        ))}
-                    </select>
-                    {(!services || services?.length === 0) && <p className="text-sm text-red-500 mt-1">Görünürde hiç hizmet yok. Önce bir esnaf olarak hizmet eklemelisiniz.</p>}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Tarih</label>
-                        <input
-                            type="date"
-                            className="w-full border rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-                            value={formData.date}
-                            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Saat</label>
-                        <input
-                            type="time"
-                            className="w-full border rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-                            value={formData.time}
-                            onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                            required
-                        />
-                    </div>
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Notlar (İsteğe bağlı)</label>
-                    <textarea
-                        className="w-full border rounded-md px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
-                        rows="3"
-                        value={formData.notes}
-                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    ></textarea>
-                </div>
-
-                {isWaitlist && (
-                    <div className="bg-orange-50 border border-orange-200 text-orange-800 px-4 py-3 rounded text-sm flex items-center gap-2">
-                        <span>⚠️ Bu saatte başka bir randevu mevcut. Ancak bekleme listesine katılarak iptal durumunda haberdar olabilirsiniz.</span>
-                    </div>
-                )}
-
+        <div className="max-w-4xl mx-auto py-10 px-4 animate-in fade-in duration-500">
+            <div className="flex items-center gap-4 mb-10">
                 <button
-                    type="submit"
-                    disabled={submitting || services.length === 0}
-                    className={`w-full text-white py-3 rounded-lg font-semibold transition disabled:opacity-50 ${isWaitlist
-                        ? 'bg-orange-500 hover:bg-orange-600'
-                        : 'bg-blue-600 hover:bg-blue-700'
-                        }`}
+                    onClick={() => navigate(-1)}
+                    className="p-3 bg-white shadow-sm border border-slate-100 rounded-2xl text-slate-400 hover:text-brand-primary hover:border-brand-primary/20 transition-all group"
                 >
-                    {submitting
-                        ? 'İşleniyor...'
-                        : isWaitlist
-                            ? 'Sıraya Gir (Bekleme Listesi)'
-                            : 'Randevuyu Onayla'
-                    }
+                    <ArrowLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
                 </button>
-            </form>
+                <div>
+                    <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Randevu Oluştur</h1>
+                    <p className="text-slate-500 font-medium">Lütfen uygun bir hizmet ve tarih seçin.</p>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                <div className="lg:col-span-12">
+                    <div className="glass-card p-8 md:p-12 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                            <Calendar size={120} />
+                        </div>
+
+                        {error && (
+                            <div className="mb-8 p-4 bg-red-50/50 border border-red-100 text-red-600 rounded-2xl text-sm font-semibold flex items-center gap-3">
+                                <AlertCircle size={20} />
+                                {error}
+                            </div>
+                        )}
+
+                        <form onSubmit={handleSubmit} className="space-y-10">
+                            {/* Service Selection */}
+                            <section>
+                                <label className="text-sm font-black text-slate-600 uppercase tracking-widest ml-1 mb-4 block">HİZMET SEÇİMİ</label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {services.map(service => (
+                                        <div
+                                            key={service.id}
+                                            onClick={() => setFormData({ ...formData, service_id: service.id })}
+                                            className={`cursor-pointer p-6 rounded-[2rem] border-2 transition-all relative overflow-hidden group/card ${formData.service_id === service.id
+                                                ? 'border-brand-primary bg-brand-primary/5 shadow-xl shadow-brand-primary/5'
+                                                : 'border-slate-100 bg-slate-50 hover:border-slate-200 hover:bg-white'
+                                                }`}
+                                        >
+                                            <div className="flex justify-between items-start mb-3">
+                                                <h3 className={`font-bold text-lg ${formData.service_id === service.id ? 'text-brand-primary' : 'text-slate-900'}`}>{service.name}</h3>
+                                                {formData.service_id === service.id && (
+                                                    <div className="w-6 h-6 bg-brand-primary text-white rounded-full flex items-center justify-center">
+                                                        <CheckCircle2 size={14} />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center justify-between mt-auto">
+                                                <div className="flex items-center gap-1.5 text-slate-400 font-bold text-xs uppercase">
+                                                    <Clock size={14} /> {service.duration} dk
+                                                </div>
+                                                <span className={`font-black text-xl tracking-tighter ${formData.service_id === service.id ? 'text-brand-primary' : 'text-slate-700'}`}>
+                                                    {service.price} TL
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+
+                            {/* Date & Time Selection */}
+                            <section className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-slate-100">
+                                <div className="space-y-4">
+                                    <label className="text-sm font-black text-slate-600 uppercase tracking-widest ml-1 block">TARİH</label>
+                                    <div className="relative group">
+                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-primary transition-colors" size={20} />
+                                        <input
+                                            type="date"
+                                            value={formData.date}
+                                            min={new Date().toISOString().split('T')[0]}
+                                            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                                            className="glass-input w-full pl-12 pr-4 py-4 text-slate-900 font-bold"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <label className="text-sm font-black text-slate-600 uppercase tracking-widest ml-1 block">SAAT</label>
+                                    <div className="relative group">
+                                        <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-primary transition-colors" size={20} />
+                                        <input
+                                            type="time"
+                                            value={formData.time}
+                                            onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                                            className="glass-input w-full pl-12 pr-4 py-4 text-slate-900 font-bold"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            </section>
+
+                            {/* Availability Status Indicator */}
+                            {formData.date && formData.time && formData.service_id && (
+                                <div className={`p-4 rounded-2xl flex items-center gap-3 transition-all duration-300 ${checkingAvailability
+                                        ? 'bg-slate-100 text-slate-500'
+                                        : isSlotAvailable
+                                            ? 'bg-green-50 text-green-700 border border-green-100'
+                                            : 'bg-amber-50 text-amber-700 border border-amber-100'
+                                    }`}>
+                                    {checkingAvailability ? (
+                                        <>
+                                            <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                                            <span className="font-medium">Müsaitlik kontrol ediliyor...</span>
+                                        </>
+                                    ) : isSlotAvailable ? (
+                                        <>
+                                            <CheckCircle2 size={20} />
+                                            <span className="font-semibold">Bu saat müsait! Randevu alabilirsiniz.</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Users size={20} />
+                                            <span className="font-semibold">Bu saat dolu. Sıraya girerek bekleyebilirsiniz.</span>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="pt-10 flex flex-col md:flex-row items-center gap-6">
+                                <button
+                                    type="submit"
+                                    disabled={submitting || checkingAvailability}
+                                    className={`w-full md:w-auto md:min-w-[240px] flex items-center justify-center gap-3 py-4 text-lg font-black rounded-2xl shadow-lg transition-all duration-300 disabled:opacity-50 ${buttonStyles.className}`}
+                                >
+                                    {submitting ? (
+                                        <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <>
+                                            <span>{buttonStyles.text}</span>
+                                            {buttonStyles.icon}
+                                        </>
+                                    )}
+                                </button>
+                                <div className="flex items-center gap-2 text-slate-400 font-medium text-sm">
+                                    <Info size={16} />
+                                    <span>Buton rengi müsaitlik durumuna göre değişir.</span>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
-export default BookAppointment;
+
+export default React.memo(BookAppointment);

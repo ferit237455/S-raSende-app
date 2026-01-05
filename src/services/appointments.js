@@ -71,5 +71,21 @@ export const appointmentService = {
     // Cancel appointment (soft delete or status change)
     async cancelAppointment(id) {
         return this.updateStatus(id, 'cancelled');
+    },
+
+    // Delete appointment permanently (only for cancelled appointments)
+    async deleteAppointment(id) {
+        try {
+            const { error } = await supabase
+                .from('appointments')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            console.error('Error deleting appointment:', error);
+            throw error;
+        }
     }
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../services/supabase';
 import { Mail, Phone, Calendar as CalendarIcon } from 'lucide-react';
 
@@ -6,53 +6,92 @@ const Customers = () => {
     const [customers, setCustomers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const isMountedRef = useRef(true);
 
-    useEffect(() => {
-        const fetchCustomers = async () => {
-            try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
+    const fetchCustomers = useCallback(async (signal) => {
+        if (!isMountedRef.current) return;
+        
+        setLoading(true);
+        setError(null);
+        
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user || signal?.aborted || !isMountedRef.current) return;
 
-                // Fetch unique customers from appointments
-                const { data, error } = await supabase
-                    .from('appointments')
-                    .select(`
-            customer_id,
-            customer:profiles!customer_id(*)
-          `)
-                    .eq('tradesman_id', user.id);
+            // Fetch unique customers from appointments
+            const { data, error: fetchError } = await supabase
+                .from('appointments')
+                .select(`
+                    customer_id,
+                    customer:profiles!customer_id(*)
+                `)
+                .eq('tradesman_id', user.id);
 
-                if (error) throw error;
+            if (signal?.aborted || !isMountedRef.current) return;
 
-                // Deduplicate customers
-                const uniqueCustomers = [];
-                const map = new Map();
-                for (const item of data) {
-                    if (!map.has(item.customer_id)) {
-                        map.set(item.customer_id, true);    // set any value to Map
-                        if (item.customer) uniqueCustomers.push(item.customer);
-                    }
+            if (fetchError) throw fetchError;
+
+            // Deduplicate customers
+            const uniqueCustomers = [];
+            const map = new Map();
+            for (const item of data) {
+                if (!map.has(item.customer_id)) {
+                    map.set(item.customer_id, true);
+                    if (item.customer) uniqueCustomers.push(item.customer);
                 }
+            }
 
+            if (isMountedRef.current && !signal?.aborted) {
                 setCustomers(uniqueCustomers);
-            } catch (err) {
-                console.error('Error fetching customers:', err);
+            }
+        } catch (err) {
+            if (signal?.aborted || !isMountedRef.current) return;
+            console.error('Error fetching customers:', err);
+            if (isMountedRef.current) {
                 setError('Müşterileriniz yüklenirken bir sorun oluştu.');
-            } finally {
+            }
+        } finally {
+            if (isMountedRef.current && !signal?.aborted) {
                 setLoading(false);
             }
-        };
-
-        fetchCustomers();
-        // Acil durum zaman aşımı
-        const timeout = setTimeout(() => setLoading(false), 5000);
-        return () => clearTimeout(timeout);
+        }
     }, []);
 
+    useEffect(() => {
+        isMountedRef.current = true;
+        const abortController = new AbortController();
+        
+        fetchCustomers(abortController.signal);
+
+        return () => {
+            isMountedRef.current = false;
+            abortController.abort();
+        };
+    }, [fetchCustomers]);
+
+    // Skeleton Loader
     if (loading) return (
-        <div className="flex justify-center items-center min-h-[50vh]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="ml-2 text-gray-500">Yükleniyor...</p>
+        <div className="p-8 max-w-7xl mx-auto">
+            <div className="animate-pulse mb-6">
+                <div className="h-8 bg-gray-200 rounded w-48 mb-2" />
+            </div>
+            <div className="bg-white shadow-xl shadow-slate-200/50 rounded-xl overflow-hidden">
+                <div className="bg-gray-50 px-6 py-4">
+                    <div className="h-4 bg-gray-200 rounded w-32" />
+                </div>
+                <div className="p-6 space-y-4">
+                    {[1, 2, 3, 4, 5].map(i => (
+                        <div key={i} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                            <div className="w-10 h-10 bg-gray-200 rounded-full" />
+                            <div className="flex-1 space-y-2">
+                                <div className="h-4 bg-gray-200 rounded w-32" />
+                                <div className="h-3 bg-gray-100 rounded w-24" />
+                            </div>
+                            <div className="h-6 bg-gray-200 rounded-full w-16" />
+                        </div>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../services/supabase';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import { Mail, Lock, LogIn, ArrowRight } from 'lucide-react';
 
 const Login = () => {
     const [email, setEmail] = useState('');
@@ -27,9 +28,6 @@ const Login = () => {
             }
         };
         checkUser();
-        // Acil durum zaman aşımı
-        const timeout = setTimeout(() => { }, 2000); // Redirect is fast, but let's be safe
-        return () => clearTimeout(timeout);
     }, [navigate]);
 
     const handleLogin = async (e) => {
@@ -45,7 +43,6 @@ const Login = () => {
 
             if (error) throw error;
 
-            // Determine user type and redirect accordingly
             const { data: { user } } = await supabase.auth.getUser();
 
             if (user) {
@@ -60,55 +57,98 @@ const Login = () => {
                 } else {
                     navigate('/explore');
                 }
-            } else {
-                navigate('/dashboard');
             }
         } catch (err) {
-            setError(err.message);
+            setError(err.message === 'Invalid login credentials' ? 'E-posta veya şifre hatalı.' : err.message);
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="flex items-center justify-center min-h-[80vh]">
-            <div className="w-full max-w-md p-8 space-y-6 bg-white rounded shadow-md">
-                <h2 className="text-2xl font-bold text-center">SıraSende - Giriş Yap</h2>
-                {error && <div className="p-3 text-red-500 bg-red-100 rounded">{error}</div>}
-                <form onSubmit={handleLogin} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Email</label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            required
-                        />
+        <div className="min-h-[85vh] flex flex-col justify-center items-center px-4 sm:px-6 py-8 bg-mesh">
+            <div className="w-full max-w-md">
+                <div className="text-center mb-6 sm:mb-10">
+                    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 tracking-tight mb-2">
+                        Tekrar Hoş Geldiniz
+                    </h1>
+                    <p className="text-sm sm:text-base text-slate-500 font-medium">
+                        SıraSende ile dilediğiniz esnaftan hızlıca randevu alın.
+                    </p>
+                </div>
+
+                <div className="glass-card p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-3 opacity-10">
+                        <LogIn size={80} className="text-brand-primary" />
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Şifre</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            required
-                        />
-                    </div>
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full px-4 py-2 font-bold text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50"
-                    >
-                        {loading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
-                    </button>
-                </form>
-                <div className="text-center">
-                    <p className="text-sm text-gray-600">Hesabın yok mu? <a href="/register" className="text-blue-600 hover:underline">Kayıt Ol</a></p>
+
+                    {error && (
+                        <div className="mb-6 p-4 bg-red-50/50 border border-red-100 text-red-600 rounded-xl text-sm font-medium flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                            <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                            {error}
+                        </div>
+                    )}
+
+                    <form onSubmit={handleLogin} className="space-y-5">
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700 ml-1">Email Adresi</label>
+                            <div className="relative group">
+                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-primary transition-colors" size={20} />
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="glass-input w-full pl-12 pr-4 py-3 text-slate-900 placeholder:text-slate-400"
+                                    placeholder="ornek@email.com"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700 ml-1">Şifre</label>
+                            <div className="relative group">
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-primary transition-colors" size={20} />
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="glass-input w-full pl-12 pr-4 py-3 text-slate-900 placeholder:text-slate-400"
+                                    placeholder="••••••••"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="btn-primary w-full flex items-center justify-center gap-2 mt-4"
+                        >
+                            {loading ? (
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            ) : (
+                                <>
+                                    <span>Giriş Yap</span>
+                                    <ArrowRight size={18} />
+                                </>
+                            )}
+                        </button>
+                    </form>
+                </div>
+
+                <div className="mt-8 text-center">
+                    <p className="text-slate-600 font-medium">
+                        Hesabınız yok mu?{' '}
+                        <Link to="/register" className="text-brand-primary font-bold hover:underline transition-all">
+                            Ücretsiz Kayıt Olun
+                        </Link>
+                    </p>
                 </div>
             </div>
         </div>
     );
 };
+
 export default Login;
+

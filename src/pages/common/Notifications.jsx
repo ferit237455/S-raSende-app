@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../services/supabase';
 import { Bell, Check, Trash2 } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
@@ -8,37 +8,57 @@ const Notifications = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const { updateUnreadCount, refreshNotifications } = useNotifications();
+    const isMountedRef = useRef(true);
 
-    useEffect(() => {
-        fetchNotifications();
-        // Acil durum zaman aşımı
-        const timeout = setTimeout(() => setLoading(false), 5000);
-        return () => clearTimeout(timeout);
-    }, []);
-
-    const fetchNotifications = async () => {
+    const fetchNotifications = useCallback(async (signal) => {
+        if (!isMountedRef.current) return;
+        
         setLoading(true);
+        setError(null);
+        
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            if (!user || signal?.aborted || !isMountedRef.current) return;
 
-            const { data, error } = await supabase
+            const { data, error: fetchError } = await supabase
                 .from('notifications')
                 .select('*')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 
-            if (error) throw error;
-            setNotifications(data || []);
-            // Sync count on page load
-            refreshNotifications();
-        } catch (error) {
-            console.error('Error:', error);
-            setError('Bildirimler yüklenirken bir hata oluştu.');
+            if (signal?.aborted || !isMountedRef.current) return;
+
+            if (fetchError) throw fetchError;
+            
+            if (isMountedRef.current) {
+                setNotifications(data || []);
+                // Sync count on page load
+                refreshNotifications();
+            }
+        } catch (err) {
+            if (signal?.aborted || !isMountedRef.current) return;
+            console.error('Error:', err);
+            if (isMountedRef.current) {
+                setError('Bildirimler yüklenirken bir hata oluştu.');
+            }
         } finally {
-            setLoading(false);
+            if (isMountedRef.current && !signal?.aborted) {
+                setLoading(false);
+            }
         }
-    };
+    }, [refreshNotifications]);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        const abortController = new AbortController();
+        
+        fetchNotifications(abortController.signal);
+
+        return () => {
+            isMountedRef.current = false;
+            abortController.abort();
+        };
+    }, [fetchNotifications]);
 
     const markAsRead = async (id) => {
         setLoading(true);

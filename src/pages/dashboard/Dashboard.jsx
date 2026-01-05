@@ -1,201 +1,292 @@
-import React, { useEffect, useState } from 'react';
-import { appointmentService } from '../../services/appointments';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../../services/supabase';
 import { useNavigate } from 'react-router-dom';
-import { Trash2 } from 'lucide-react';
+import { CalendarDays, Users, Store, Clock, ChevronRight, Trash2 } from 'lucide-react';
+import { appointmentService } from '../../services/appointments';
+
+// Skeleton Components for better UX during loading
+const StatCardSkeleton = () => (
+    <div className="bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl p-6 animate-pulse">
+        <div className="flex items-center justify-between">
+            <div>
+                <div className="h-4 bg-gray-400/30 rounded w-24 mb-3" />
+                <div className="h-10 bg-gray-400/30 rounded w-16" />
+            </div>
+            <div className="w-14 h-14 bg-gray-400/20 rounded-2xl" />
+        </div>
+    </div>
+);
+
+const AppointmentSkeleton = () => (
+    <div className="px-6 py-4 flex items-center justify-between animate-pulse">
+        <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gray-200 rounded-xl" />
+            <div>
+                <div className="h-4 bg-gray-200 rounded w-24 mb-2" />
+                <div className="h-3 bg-gray-100 rounded w-16" />
+            </div>
+        </div>
+        <div className="h-6 bg-gray-200 rounded-full w-16" />
+    </div>
+);
 
 const Dashboard = () => {
-    const [appointments, setAppointments] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [profile, setProfile] = useState(null);
+    const [stats, setStats] = useState({
+        totalAppointments: 0,
+        waitingCustomers: 0
+    });
+    const [todayAppointments, setTodayAppointments] = useState([]);
     const navigate = useNavigate();
+    const isMountedRef = useRef(true);
 
-    const fetchAppointments = async () => {
-        setLoading(true);
-        setError(null);
-        setAppointments([]); // Eski veriyi temizle
+    // Memoized fetch function with abort support
+    const fetchDashboardData = useCallback(async (signal) => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
+
+            if (signal?.aborted || !isMountedRef.current) return;
+
             if (!user) {
                 navigate('/login');
                 return;
             }
-            const data = await appointmentService.getAppointments({ tradesman_id: user.id });
-            setAppointments(data || []);
-        } catch (err) {
-            setError(err.message);
+
+            // Parallel fetching for better performance
+            const [profileResult, appointmentCountResult, waitingCountResult, todayResult] = await Promise.all([
+                // Fetch profile
+                supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single(),
+
+                // Fetch total appointments count
+                supabase
+                    .from('appointments')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('tradesman_id', user.id),
+
+                // Fetch waiting list count
+                supabase
+                    .from('waiting_list')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('tradesman_id', user.id)
+                    .eq('status', 'waiting'),
+
+                // Fetch today's appointments
+                (() => {
+                    const todayStart = new Date();
+                    todayStart.setHours(0, 0, 0, 0);
+                    const todayEnd = new Date();
+                    todayEnd.setHours(23, 59, 59, 999);
+
+                    return supabase
+                        .from('appointments')
+                        .select(`
+                            id, 
+                            start_time, 
+                            end_time, 
+                            status,
+                            service:services(name),
+                            customer:profiles!customer_id(full_name)
+                        `)
+                        .eq('tradesman_id', user.id)
+                        .gte('start_time', todayStart.toISOString())
+                        .lte('start_time', todayEnd.toISOString())
+                        .neq('status', 'cancelled')
+                        .order('start_time', { ascending: true });
+                })()
+            ]);
+
+            if (signal?.aborted || !isMountedRef.current) return;
+
+            // Update state with results
+            setProfile(profileResult.data || null);
+            setStats({
+                totalAppointments: appointmentCountResult.count || 0,
+                waitingCustomers: waitingCountResult.count || 0
+            });
+            setTodayAppointments(todayResult.data || []);
+
+        } catch (error) {
+            if (signal?.aborted || !isMountedRef.current) return;
+            console.error('Dashboard fetch error:', error);
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
-    };
+    }, [navigate]);
 
     useEffect(() => {
-        fetchAppointments();
-        // Emergency checkout
+        isMountedRef.current = true;
+        const abortController = new AbortController();
+
+        fetchDashboardData(abortController.signal);
+
+        // Emergency timeout
         const timeout = setTimeout(() => {
-            if (loading) setLoading(false);
-        }, 5000);
-        return () => clearTimeout(timeout);
-    }, []);
-
-    const handleCancel = async (id) => {
-        if (!window.confirm('Randevuyu iptal etmek istediğinize emin misiniz?')) return;
-        setLoading(true);
-        try {
-            // İptal edilmeden önce randevu bilgilerini al (bildirim için tarih ve esnaf lazım)
-            const { data: appointment } = await supabase
-                .from('appointments')
-                .select('*')
-                .eq('id', id)
-                .single();
-
-            await appointmentService.cancelAppointment(id);
-
-            // Bekleme listesi bildirimi - SADECE İLK KİŞİYİ BİLGİLENDİR (Kullanıcı Talebi)
-            if (appointment) {
-                const dateOnly = appointment.start_time.split('T')[0];
-                const { data: waitlistFirst } = await supabase
-                    .from('waiting_list')
-                    .select('*')
-                    .eq('tradesman_id', appointment.tradesman_id)
-                    .eq('preferred_date', dateOnly)
-                    .eq('status', 'waiting')
-                    .order('created_at', { ascending: true })
-                    .limit(1)
-                    .single();
-
-                if (waitlistFirst) {
-                    // Sadece bu kişiyi güncelle
-                    await supabase
-                        .from('waiting_list')
-                        .update({ status: 'notified' })
-                        .eq('id', waitlistFirst.id);
-
-                    // Bildirimler tablosuna bu kişiye özel ekle
-                    await supabase.from('notifications').insert({
-                        user_id: waitlistFirst.user_id,
-                        message: `Beklediğiniz tarihte (${dateOnly}) bir boşluk oluştu! Hemen randevu alabilirsiniz.`,
-                        is_read: false
-                    });
-
-                    alert(`Randevu iptal edildi. Bekleme listesindeki ilk kişi (${dateOnly}) bilgilendirildi.`);
-                } else {
-                    alert('Randevu iptal edildi.');
-                }
+            if (isMountedRef.current && loading) {
+                setLoading(false);
             }
+        }, 5000);
 
-            await fetchAppointments();
-        } catch (err) {
-            alert('İptal işlemi başarısız: ' + err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
+        return () => {
+            isMountedRef.current = false;
+            abortController.abort();
+            clearTimeout(timeout);
+        };
+    }, [fetchDashboardData]);
 
-    const handleClearCancelled = async () => {
-        if (!window.confirm('İptal edilen tüm randevular listenizden kalıcı olarak silinecektir. Emin misiniz?')) return;
-        setLoading(true);
+    // Handle delete cancelled appointment
+    const handleDeleteAppointment = useCallback(async (appointmentId, e) => {
+        e.stopPropagation(); // Prevent card click
+        
+        const confirmed = window.confirm('Bu iptal edilmiş randevuyu geçmişten tamamen silmek istediğinize emin misiniz?');
+        if (!confirmed) return;
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            const { error } = await supabase
-                .from('appointments')
-                .delete()
-                .eq('tradesman_id', user.id)
-                .eq('status', 'cancelled');
-
-            if (error) throw error;
-
-            setAppointments(appointments?.filter(a => a.status !== 'cancelled') || []);
-            alert('İptal edilen randevular temizlendi.');
+            await appointmentService.deleteAppointment(appointmentId);
+            // Optimistic update - remove from list immediately
+            setTodayAppointments(prev => prev.filter(apt => apt?.id !== appointmentId));
         } catch (error) {
-            console.error('Silme hatası:', error);
-            alert('Silinemedi (Yetki sorunu olabilir, lütfen SQL güncellemesini yapın). Hata: ' + error.message);
-        } finally {
-            setLoading(false);
+            console.error('Error deleting appointment:', error);
+            alert('Randevu silinirken bir hata oluştu: ' + (error?.message || 'Bilinmeyen hata'));
+            // Reload appointments on error
+            const abortController = new AbortController();
+            fetchDashboardData(abortController.signal);
         }
-    };
-
-    if (loading) return (
-        <div className="flex justify-center items-center min-h-[50vh]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="ml-2 text-gray-500">Yükleniyor...</p>
-        </div>
-    );
-
-    if (error) return (
-        <div className="p-8 text-center">
-            <div className="bg-red-50 text-red-700 p-4 rounded-lg inline-block border border-red-100">
-                <p className="font-semibold">Bir hata oluştu!</p>
-                <p className="text-sm mt-1">{error}</p>
-                <button onClick={() => window.location.reload()} className="mt-3 text-sm bg-white px-3 py-1 rounded border border-red-200 hover:bg-red-100 transition">
-                    Sayfayı Yenile
-                </button>
-            </div>
-        </div>
-    );
+    }, [fetchDashboardData]);
 
     return (
-        <div className="p-8 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-900">Randevu Paneli</h1>
+        <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+            {/* Header */}
+            <header className="mb-6 sm:mb-8">
+                {loading ? (
+                    <div className="animate-pulse">
+                        <div className="h-6 sm:h-8 bg-gray-200 rounded w-48 sm:w-72 mb-2" />
+                        <div className="h-3 sm:h-4 bg-gray-100 rounded w-32 sm:w-48" />
+                    </div>
+                ) : (
+                    <>
+                        <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-gray-900 tracking-tight">
+                            Hoş Geldiniz, {profile?.business_name || profile?.full_name || 'Esnaf'}!
+                        </h1>
+                        <p className="text-sm sm:text-base text-gray-500 mt-1">İşletmenizin günlük özeti</p>
+                    </>
+                )}
+            </header>
 
+            {/* Stat Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8 sm:mb-10">
+                {loading ? (
+                    <>
+                        <StatCardSkeleton />
+                        <StatCardSkeleton />
+                        <StatCardSkeleton />
+                    </>
+                ) : (
+                    <>
+                        {/* Total Appointments */}
+                        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-4 sm:p-6 text-white shadow-lg shadow-blue-500/20">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-blue-100 text-xs sm:text-sm font-medium uppercase tracking-wider">Toplam Randevu</p>
+                                    <p className="text-3xl sm:text-4xl font-black mt-2">{stats.totalAppointments}</p>
+                                </div>
+                                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                                    <CalendarDays size={24} className="sm:w-7 sm:h-7" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Waiting Customers */}
+                        <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl p-4 sm:p-6 text-white shadow-lg shadow-amber-500/20">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-amber-100 text-xs sm:text-sm font-medium uppercase tracking-wider">Bekleyen Müşteri</p>
+                                    <p className="text-3xl sm:text-4xl font-black mt-2">{stats.waitingCustomers}</p>
+                                </div>
+                                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-white/20 rounded-2xl flex items-center justify-center">
+                                    <Users size={24} className="sm:w-7 sm:h-7" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Shop Status */}
+                        <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 sm:p-6 text-white shadow-lg shadow-emerald-500/20 sm:col-span-2 lg:col-span-1">
+                            <div className="flex items-center justify-between">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-emerald-100 text-xs sm:text-sm font-medium uppercase tracking-wider">Dükkan Durumu</p>
+                                    <p className="text-base sm:text-lg font-bold mt-2 truncate">{profile?.business_name || 'Belirtilmemiş'}</p>
+                                    <p className="text-emerald-100 text-xs sm:text-sm truncate">{profile?.category || 'Kategori yok'}</p>
+                                </div>
+                                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0 ml-2">
+                                    <Store size={24} className="sm:w-7 sm:h-7" />
+                                </div>
+                            </div>
+                        </div>
+                    </>
+                )}
             </div>
 
-            {error && <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>}
-
-            {appointments?.some(a => a.status === 'cancelled') && (
-                <div className="flex justify-end mb-4">
-                    <button
-                        onClick={handleClearCancelled}
-                        className="text-sm text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg transition border border-transparent hover:border-red-100 flex items-center gap-2"
-                    >
-                        <Trash2 size={16} /> İptal Edilen Geçmişi Temizle
-                    </button>
+            {/* Today's Appointments */}
+            <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden">
+                <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 flex items-center justify-between">
+                    <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <Clock size={18} className="sm:w-5 sm:h-5 text-blue-600" />
+                        <span>Bugünün Randevuları</span>
+                    </h2>
+                    <span className="text-sm text-gray-500">
+                        {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    </span>
                 </div>
-            )}
 
-            <div className="bg-white shadow overflow-hidden rounded-md">
-                {!appointments || !Array.isArray(appointments) || appointments?.length === 0 ? (
-                    <div className="p-6 text-center text-gray-500">Henüz hiç randevunuz yok.</div>
+                {loading ? (
+                    <div className="divide-y divide-gray-50">
+                        <AppointmentSkeleton />
+                        <AppointmentSkeleton />
+                        <AppointmentSkeleton />
+                    </div>
+                ) : todayAppointments.length === 0 ? (
+                    <div className="p-8 text-center text-gray-400">
+                        <CalendarDays size={48} className="mx-auto mb-3 opacity-50" />
+                        <p className="font-medium">Bugün için randevu bulunmuyor.</p>
+                    </div>
                 ) : (
-                    <ul className="divide-y divide-gray-200">
-                        {appointments?.map((apt) => (
-                            <li key={apt?.id} className="p-6 hover:bg-gray-50">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <div className="text-lg font-medium text-gray-900">
-                                            {apt?.service?.name || 'Hizmet Silinmiş'}
-                                        </div>
-                                        <div className="text-sm text-gray-500">
-                                            {apt?.start_time ? new Date(apt.start_time).toLocaleString('tr-TR') : ''} - {apt?.end_time ? new Date(apt.end_time).toLocaleTimeString('tr-TR') : ''}
-                                        </div>
-                                        <div className="text-sm text-gray-500">
-                                            Müşteri: {apt?.customer?.full_name || 'Bilinmiyor'} | Esnaf: {apt?.tradesman?.business_name || apt?.tradesman?.full_name || 'Bilinmiyor'}
-                                        </div>
-                                        <div className="mt-1">
-                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                            ${apt?.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                                                    apt?.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                                                        'bg-yellow-100 text-yellow-800'}`}>
-                                                {apt?.status === 'pending' ? 'Bekliyor' :
-                                                    apt?.status === 'confirmed' ? 'Onaylandı' :
-                                                        apt?.status === 'cancelled' ? 'İptal Edildi' : apt?.status}
-                                            </span>
-                                        </div>
+                    <ul className="divide-y divide-gray-50">
+                        {todayAppointments.map((apt) => (
+                            <li key={apt?.id} className="px-6 py-4 hover:bg-gray-50 transition-colors flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 font-bold text-sm">
+                                        {new Date(apt?.start_time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                                     </div>
                                     <div>
-                                        {apt?.status !== 'cancelled' && (
-                                            <button
-                                                onClick={() => handleCancel(apt?.id)}
-                                                className="text-red-600 hover:text-red-900 text-sm font-medium"
-                                            >
-                                                İptal Et
-                                            </button>
-                                        )}
+                                        <p className="font-semibold text-gray-900">{apt?.service?.name || 'Hizmet'}</p>
+                                        <p className="text-sm text-gray-500">{apt?.customer?.full_name || 'Müşteri'}</p>
                                     </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${apt?.status === 'confirmed'
+                                        ? 'bg-green-100 text-green-700'
+                                        : apt?.status === 'cancelled'
+                                        ? 'bg-red-100 text-red-700'
+                                        : 'bg-yellow-100 text-yellow-700'
+                                        }`}>
+                                        {apt?.status === 'confirmed' ? 'Onaylı' : apt?.status === 'cancelled' ? 'İptal Edildi' : 'Bekliyor'}
+                                    </span>
+                                    {apt?.status === 'cancelled' && (
+                                        <button
+                                            onClick={(e) => handleDeleteAppointment(apt?.id, e)}
+                                            className="text-slate-300 hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-50"
+                                            title="İptal edilmiş randevuyu sil"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
+                                    <ChevronRight size={18} className="text-gray-300" />
                                 </div>
                             </li>
                         ))}
@@ -205,4 +296,5 @@ const Dashboard = () => {
         </div>
     );
 };
-export default Dashboard;
+
+export default React.memo(Dashboard);

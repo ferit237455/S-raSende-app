@@ -1,21 +1,39 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../services/supabase';
 import { Calendar, Clock, User, Phone, Mail, Trash2 } from 'lucide-react';
+
+// Skeleton Components
+const TableSkeleton = () => (
+    <div className="animate-pulse">
+        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+            <div className="h-6 bg-gray-200 rounded w-32" />
+        </div>
+        <div className="p-4 space-y-4">
+            {[1, 2, 3].map(i => (
+                <div key={i} className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-gray-200 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-gray-200 rounded w-24" />
+                        <div className="h-3 bg-gray-100 rounded w-32" />
+                    </div>
+                    <div className="h-6 bg-gray-200 rounded-full w-16" />
+                </div>
+            ))}
+        </div>
+    </div>
+);
 
 const WaitingList = () => {
     const [waitingItems, setWaitingItems] = useState([]);
     const [loading, setLoading] = useState(true);
+    const isMountedRef = useRef(true);
 
-    useEffect(() => {
-        fetchWaitingList();
-        // Acil durum zaman aşımı
-        const timeout = setTimeout(() => setLoading(false), 5000);
-        return () => clearTimeout(timeout);
-    }, []);
-
-    const fetchWaitingList = async () => {
+    // Memoized fetch function
+    const fetchWaitingList = useCallback(async (signal) => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
+
+            if (signal?.aborted || !isMountedRef.current) return;
             if (!user) return;
 
             const { data, error } = await supabase
@@ -28,38 +46,52 @@ const WaitingList = () => {
                 .eq('tradesman_id', user.id)
                 .order('created_at', { ascending: false });
 
+            if (signal?.aborted || !isMountedRef.current) return;
+
             if (error) throw error;
             setWaitingItems(data || []);
         } catch (error) {
             console.error('Error fetching waiting list:', error);
         } finally {
-            setLoading(false);
+            if (isMountedRef.current) {
+                setLoading(false);
+            }
         }
-    };
+    }, []);
 
-    const handleDelete = async (id) => {
+    useEffect(() => {
+        isMountedRef.current = true;
+        const abortController = new AbortController();
+
+        fetchWaitingList(abortController.signal);
+
+        const timeout = setTimeout(() => {
+            if (isMountedRef.current && loading) {
+                setLoading(false);
+            }
+        }, 5000);
+
+        return () => {
+            isMountedRef.current = false;
+            abortController.abort();
+            clearTimeout(timeout);
+        };
+    }, [fetchWaitingList]);
+
+    // Memoized delete handler
+    const handleDelete = useCallback(async (id) => {
         if (!window.confirm('Bu kişiyi bekleme listesinden çıkarmak istediğinize emin misiniz?')) return;
         try {
             const { error } = await supabase.from('waiting_list').delete().eq('id', id);
             if (error) throw error;
-            setWaitingItems(waitingItems?.filter(item => item?.id !== id) || []);
+            setWaitingItems(prev => prev?.filter(item => item?.id !== id) || []);
         } catch (error) {
             alert('Silinemedi: ' + error?.message);
         }
-    };
+    }, []);
 
-
-
-    // Group items by service name
-    const groupedItems = waitingItems?.reduce((acc, item) => {
-        const serviceName = item?.service?.name || 'Diğer Hizmetler';
-        if (!acc[serviceName]) acc[serviceName] = [];
-        acc[serviceName].push(item);
-        return acc;
-    }, {}) || {};
-
-
-    const handleCleanup = async () => {
+    // Memoized cleanup handler
+    const handleCleanup = useCallback(async () => {
         if (!confirm('Bildirim gönderilmiş veya tarihi geçmiş tüm kayıtlar silinecek. Emin misiniz?')) return;
 
         try {
@@ -68,42 +100,65 @@ const WaitingList = () => {
 
             const today = new Date().toISOString().split('T')[0];
 
-            // 1. Delete notified items
-            const { error: err1 } = await supabase
-                .from('waiting_list')
-                .delete()
-                .eq('tradesman_id', user.id)
-                .eq('status', 'notified');
+            // Parallel deletion for better performance
+            await Promise.all([
+                supabase
+                    .from('waiting_list')
+                    .delete()
+                    .eq('tradesman_id', user.id)
+                    .eq('status', 'notified'),
+                supabase
+                    .from('waiting_list')
+                    .delete()
+                    .eq('tradesman_id', user.id)
+                    .lt('preferred_date', today)
+            ]);
 
-            if (err1) throw err1;
-
-            // 2. Delete past items (preferred_date < today)
-            const { error: err2 } = await supabase
-                .from('waiting_list')
-                .delete()
-                .eq('tradesman_id', user.id)
-                .lt('preferred_date', today);
-
-            if (err2) throw err2;
-
-            fetchWaitingList();
+            // Refresh the list
+            const abortController = new AbortController();
+            await fetchWaitingList(abortController.signal);
             alert('Liste temizlendi.');
         } catch (error) {
             console.error('Temizleme hatası:', error);
-            alert('Hata: ' + error.message);
+            alert('Hata: ' + error?.message);
         }
-    };
+    }, [fetchWaitingList]);
 
-    if (loading) return (
-        <div className="flex justify-center items-center min-h-[50vh]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="ml-2 text-gray-500">Yükleniyor...</p>
-        </div>
-    );
+    // Memoized grouped items
+    const groupedItems = useMemo(() => {
+        if (!Array.isArray(waitingItems)) return {};
+        return waitingItems.reduce((acc, item) => {
+            const serviceName = item?.service?.name || 'Diğer Hizmetler';
+            if (!acc[serviceName]) acc[serviceName] = [];
+            acc[serviceName].push(item);
+            return acc;
+        }, {});
+    }, [waitingItems]);
 
-    if (!waitingItems) return (
-        <div className="p-8 text-center text-gray-500">Bekleme listesi yüklenemedi.</div>
-    );
+    // Memoized total count
+    const totalCount = useMemo(() => waitingItems?.length || 0, [waitingItems]);
+
+    if (loading) {
+        return (
+            <div className="p-8 max-w-7xl mx-auto">
+                <div className="flex justify-between items-center mb-6">
+                    <div className="animate-pulse">
+                        <div className="h-8 bg-gray-200 rounded w-48 mb-2" />
+                        <div className="h-4 bg-gray-100 rounded w-64" />
+                    </div>
+                </div>
+                <div className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+                    <TableSkeleton />
+                </div>
+            </div>
+        );
+    }
+
+    if (!waitingItems) {
+        return (
+            <div className="p-8 text-center text-gray-500">Bekleme listesi yüklenemedi.</div>
+        );
+    }
 
     return (
         <div className="p-8 max-w-7xl mx-auto">
@@ -122,22 +177,22 @@ const WaitingList = () => {
                         <span>Eski Sıraları Temizle</span>
                     </button>
                     <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium">
-                        Toplam: {waitingItems.length} Kişi
+                        Toplam: {totalCount} Kişi
                     </div>
                 </div>
             </div>
 
             <div className="space-y-8">
-                {Object.keys(groupedItems || {}).length > 0 ? (
-                    Object.entries(groupedItems || {}).map(([serviceName, items]) => (
-                        <div key={serviceName} className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                {Object.keys(groupedItems).length > 0 ? (
+                    Object.entries(groupedItems).map(([serviceName, items]) => (
+                        <div key={serviceName} className="bg-white shadow-xl shadow-slate-200/50 rounded-xl overflow-hidden">
+                            <div className="bg-gray-50 px-6 py-4 flex justify-between items-center">
                                 <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                                    <span className="w-2 h-8 bg-blue-600 rounded-full inline-block"></span>
+                                    <span className="w-2 h-8 bg-blue-600 rounded-full inline-block" />
                                     {serviceName}
                                 </h3>
                                 <span className="text-sm font-medium text-gray-500 bg-white px-3 py-1 rounded-full border">
-                                    {items.length} Kişi
+                                    {items?.length || 0} Kişi
                                 </span>
                             </div>
                             <div className="overflow-x-auto">
@@ -152,7 +207,7 @@ const WaitingList = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {items && Array.isArray(items) && items?.map((item) => (
+                                        {Array.isArray(items) && items.map((item) => (
                                             <tr key={item?.id} className="hover:bg-gray-50 transition-colors">
                                                 <td className="p-4">
                                                     <div className="flex items-center gap-3">
@@ -195,7 +250,6 @@ const WaitingList = () => {
                                                 </td>
                                                 <td className="p-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
-
                                                         <button
                                                             onClick={() => handleDelete(item?.id)}
                                                             className="text-gray-400 hover:text-red-600 p-2 rounded-lg transition hover:bg-red-50"
@@ -213,7 +267,7 @@ const WaitingList = () => {
                         </div>
                     ))
                 ) : (
-                    <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-16 text-center">
+                    <div className="bg-white shadow-xl shadow-slate-200/50 rounded-xl p-16 text-center">
                         <div className="mx-auto w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-4">
                             <Clock size={32} />
                         </div>
@@ -222,9 +276,8 @@ const WaitingList = () => {
                     </div>
                 )}
             </div>
-
         </div>
     );
 };
 
-export default WaitingList;
+export default React.memo(WaitingList);
