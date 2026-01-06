@@ -19,17 +19,45 @@ const Register = () => {
         setError(null);
 
         try {
+            // Önce email kontrolü yap - kullanıcı zaten var mı?
+            const { data: existingUsers } = await supabase
+                .from('profiles')
+                .select('id, email')
+                .eq('email', email)
+                .maybeSingle();
+
+            if (existingUsers) {
+                setError('Bu e-posta adresiyle zaten bir hesap mevcut. Lütfen giriş yapmayı deneyin.');
+                setLoading(false);
+                return;
+            }
+
+            // Auth kaydı oluştur
             const { data: authData, error: authError } = await supabase.auth.signUp({
                 email,
                 password,
             });
 
-            if (authError) throw authError;
+            if (authError) {
+                // E-posta zaten kayıtlı hatası için özel mesaj
+                if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
+                    throw new Error('Bu e-posta adresiyle zaten bir hesap mevcut. Lütfen giriş yapmayı deneyin.');
+                }
+                throw authError;
+            }
 
             if (authData.user) {
+                // Profil kaydı için önce kontrol et, sonra upsert kullan
+                const { data: existingProfile } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('id', authData.user.id)
+                    .maybeSingle();
+
+                // Upsert kullan: varsa güncelle, yoksa ekle
                 const { error: profileError } = await supabase
                     .from('profiles')
-                    .insert([
+                    .upsert(
                         {
                             id: authData.user.id,
                             full_name: fullName,
@@ -37,15 +65,50 @@ const Register = () => {
                             user_type: userType,
                             business_name: userType === 'tradesman' ? businessName : null,
                         },
-                    ]);
+                        {
+                            onConflict: 'id',
+                            ignoreDuplicates: false, // Mevcut kaydı güncelle
+                        }
+                    );
 
-                if (profileError) throw profileError;
+                if (profileError) {
+                    // Duplicate key hatası için özel kontrol
+                    if (profileError.code === '23505' || profileError.message?.includes('duplicate key')) {
+                        // Profil zaten var, sadece güncellemeyi dene
+                        const { error: updateError } = await supabase
+                            .from('profiles')
+                            .update({
+                                full_name: fullName,
+                                email: email,
+                                user_type: userType,
+                                business_name: userType === 'tradesman' ? businessName : null,
+                            })
+                            .eq('id', authData.user.id);
+
+                        if (updateError) throw updateError;
+                    } else {
+                        throw profileError;
+                    }
+                }
 
                 alert('Kayıt başarılı! Giriş yapabilirsiniz.');
                 navigate('/login');
             }
         } catch (err) {
-            setError(err.message);
+            // Kullanıcı dostu hata mesajları
+            let errorMessage = err.message;
+            
+            if (err.message?.includes('already registered') || err.message?.includes('already exists')) {
+                errorMessage = 'Bu e-posta adresiyle zaten bir hesap mevcut. Lütfen giriş yapmayı deneyin.';
+            } else if (err.message?.includes('duplicate key') || err.code === '23505') {
+                errorMessage = 'Bu hesap zaten oluşturulmuş. Lütfen giriş yapmayı deneyin.';
+            } else if (err.message?.includes('Password')) {
+                errorMessage = 'Şifre çok kısa. Lütfen en az 6 karakter girin.';
+            } else if (err.message?.includes('Invalid email')) {
+                errorMessage = 'Geçersiz e-posta adresi. Lütfen doğru bir e-posta adresi girin.';
+            }
+            
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
