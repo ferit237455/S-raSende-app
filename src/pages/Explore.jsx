@@ -43,8 +43,13 @@ const Explore = () => {
             const { data, error: fetchError } = await supabase
                 .from('profiles')
                 .select(`
-                    *,
-                    services (*)
+                    id,
+                    full_name,
+                    business_name,
+                    image_url,
+                    category,
+                    user_type,
+                    services (id, name)
                 `)
                 .eq('user_type', 'tradesman');
 
@@ -255,6 +260,7 @@ const Explore = () => {
                                         <img
                                             src={tradesman.image_url}
                                             alt={tradesman?.business_name || 'Dükkan'}
+                                            loading="lazy"
                                             className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${imageLoaded[tradesman?.id] ? 'opacity-100' : 'opacity-0'
                                                 }`}
                                             onLoad={() => handleImageLoad(tradesman?.id)}

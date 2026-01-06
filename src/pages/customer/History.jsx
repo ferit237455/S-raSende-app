@@ -1,74 +1,119 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../../services/supabase';
 import { Calendar, Clock, MapPin, Store, Trash2, ChevronRight, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+
+// Skeleton Components
+const HistorySkeleton = () => (
+    <div className="max-w-5xl mx-auto py-10 px-4">
+        <div className="animate-pulse mb-10">
+            <div className="h-8 bg-gray-200 rounded w-64 mb-2" />
+            <div className="h-4 bg-gray-100 rounded w-96" />
+        </div>
+        <div className="flex gap-1 mb-8 bg-gray-100 rounded-2xl p-1 w-fit">
+            <div className="h-10 bg-gray-200 rounded-xl w-32" />
+            <div className="h-10 bg-gray-200 rounded-xl w-32" />
+        </div>
+        <div className="space-y-4">
+            {[1, 2, 3].map(i => (
+                <div key={i} className="glass-card p-6 animate-pulse">
+                    <div className="flex gap-5">
+                        <div className="w-14 h-14 bg-gray-200 rounded-2xl" />
+                        <div className="flex-1 space-y-3">
+                            <div className="h-6 bg-gray-200 rounded w-48" />
+                            <div className="h-4 bg-gray-100 rounded w-32" />
+                            <div className="flex gap-2">
+                                <div className="h-6 bg-gray-100 rounded-lg w-24" />
+                                <div className="h-6 bg-gray-100 rounded-lg w-24" />
+                            </div>
+                        </div>
+                        <div className="h-8 bg-gray-200 rounded-full w-32" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    </div>
+);
 
 const History = () => {
     const [appointments, setAppointments] = useState([]);
     const [waitingList, setWaitingList] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('appointments'); // 'appointments' or 'waiting'
+    const isMountedRef = useRef(true);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (signal) => {
+        if (!isMountedRef.current) return;
+        
         setLoading(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            if (!user || signal?.aborted || !isMountedRef.current) return;
 
-            // Fetch Appointments with a small delay if needed to ensure DB consistency
-            const { data: aptData, error: aptError } = await supabase
-                .from('appointments')
-                .select(`
-                    *,
-                    service:services(name),
-                    tradesman:profiles!tradesman_id(business_name, full_name, phone_number)
-                `)
-                .eq('customer_id', user.id)
-                .order('start_time', { ascending: false });
+            // Parallel fetching for better performance
+            const [aptResult, waitResult] = await Promise.all([
+                // Fetch Appointments - only necessary fields
+                supabase
+                    .from('appointments')
+                    .select(`
+                        id,
+                        start_time,
+                        end_time,
+                        status,
+                        service:services(name),
+                        tradesman:profiles!tradesman_id(business_name, full_name, phone_number)
+                    `)
+                    .eq('customer_id', user.id)
+                    .order('start_time', { ascending: false }),
 
-            if (aptError) throw aptError;
-            setAppointments(aptData || []);
+                // Fetch Waiting List - only necessary fields
+                supabase
+                    .from('waiting_list')
+                    .select(`
+                        id,
+                        status,
+                        created_at,
+                        preferred_date,
+                        service:services(name, duration),
+                        tradesman:profiles!tradesman_id(business_name, full_name)
+                    `)
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+            ]);
 
-            // Fetch Waiting List
-            const { data: waitData, error: waitError } = await supabase
-                .from('waiting_list')
-                .select(`
-                    *,
-                    service:services(name, duration),
-                    tradesman:profiles!tradesman_id(business_name, full_name)
-                `)
-                .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
+            if (signal?.aborted || !isMountedRef.current) return;
 
-            if (waitError) throw waitError;
-            setWaitingList(waitData || []);
+            if (aptResult.error) throw aptResult.error;
+            if (waitResult.error) throw waitResult.error;
+
+            if (isMountedRef.current) {
+                setAppointments(aptResult.data || []);
+                setWaitingList(waitResult.data || []);
+            }
 
         } catch (error) {
+            if (signal?.aborted || !isMountedRef.current) return;
             console.error('Error fetching data:', error);
         } finally {
-            setLoading(false);
+            if (isMountedRef.current && !signal?.aborted) {
+                setLoading(false);
+            }
         }
     }, []);
 
     useEffect(() => {
+        isMountedRef.current = true;
         const abortController = new AbortController();
-        let isMounted = true;
 
-        const loadData = async () => {
-            await fetchData();
-            if (isMounted && !abortController.signal.aborted) {
-                // Data loaded, no need for timeout
-            }
-        };
-
-        loadData();
+        fetchData(abortController.signal);
 
         return () => {
-            isMounted = false;
+            isMountedRef.current = false;
             abortController.abort();
         };
     }, [fetchData]);
 
-    const handleCancelAppointment = async (id) => {
+    // Memoized handlers
+    const handleCancelAppointment = useCallback(async (id) => {
         if (!window.confirm('Bu randevuyu iptal etmek istediğinize emin misiniz?')) return;
         setLoading(true);
 
@@ -119,7 +164,8 @@ const History = () => {
                 .eq('preferred_date', cancelDate);
 
             // Fetch fresh data instead of just updating local state for consistency
-            await fetchData();
+            const abortController = new AbortController();
+            await fetchData(abortController.signal);
 
         } catch (error) {
             console.error('İptal hatası:', error);
@@ -127,23 +173,24 @@ const History = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [fetchData]);
 
-    const handleDeleteWaitlist = async (id) => {
+    const handleDeleteWaitlist = useCallback(async (id) => {
         if (!window.confirm('Bekleme listesinden çıkmak istediğinize emin misiniz?')) return;
         setLoading(true);
         try {
             const { error } = await supabase.from('waiting_list').delete().eq('id', id);
             if (error) throw error;
-            await fetchData();
+            const abortController = new AbortController();
+            await fetchData(abortController.signal);
         } catch (error) {
             alert('Silinemedi: ' + error.message);
         } finally {
             setLoading(false);
         }
-    };
+    }, [fetchData]);
 
-    const handleClearCancelled = async () => {
+    const handleClearCancelled = useCallback(async () => {
         if (!window.confirm('İptal edilen tüm randevularınız silinecektir. Emin misiniz?')) return;
         setLoading(true);
 
@@ -158,21 +205,24 @@ const History = () => {
                 .eq('status', 'cancelled');
 
             if (error) throw error;
-            await fetchData();
+            const abortController = new AbortController();
+            await fetchData(abortController.signal);
         } catch (error) {
             console.error('Silme hatası:', error);
             alert('Silinemedi: ' + error.message);
         } finally {
             setLoading(false);
         }
-    };
+    }, [fetchData]);
 
-    if (loading && appointments.length === 0) return (
-        <div className="flex flex-col justify-center items-center min-h-[60vh] gap-4">
-            <div className="w-10 h-10 border-4 border-brand-primary border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-slate-500 font-medium animate-pulse">Randevularınız Hazırlanıyor...</p>
-        </div>
-    );
+    // Memoized filtered appointments
+    const cancelledAppointments = useMemo(() => {
+        return appointments.filter(a => a.status === 'cancelled');
+    }, [appointments]);
+
+    if (loading && appointments.length === 0 && waitingList.length === 0) {
+        return <HistorySkeleton />;
+    }
 
     return (
         <div className="max-w-5xl mx-auto py-10 px-4 animate-in fade-in duration-500">
@@ -202,7 +252,7 @@ const History = () => {
                     >
                         <Clock size={18} />
                         Bekleme Listesi
-                        {waitingList.length > 0 && (
+                        {waitingList && waitingList.length > 0 && (
                             <span className="bg-brand-primary/10 text-brand-primary text-[10px] px-2 py-0.5 rounded-full border border-brand-primary/20">
                                 {waitingList.length}
                             </span>
@@ -213,7 +263,7 @@ const History = () => {
 
             {activeTab === 'appointments' && (
                 <div className="space-y-6">
-                    {appointments.some(a => a.status === 'cancelled') && (
+                    {cancelledAppointments.length > 0 && (
                         <div className="flex justify-end">
                             <button
                                 onClick={handleClearCancelled}
@@ -383,5 +433,5 @@ const EmptyState = ({ message, icon, actionText, onAction }) => (
     </div>
 );
 
-export default History;
+export default React.memo(History);
 

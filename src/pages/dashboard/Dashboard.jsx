@@ -58,7 +58,7 @@ const Dashboard = () => {
                 // Fetch profile
                 supabase
                     .from('profiles')
-                    .select('*')
+                    .select('id, business_name, full_name, category')
                     .eq('id', user.id)
                     .single(),
 

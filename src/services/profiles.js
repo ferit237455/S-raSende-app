@@ -9,7 +9,7 @@ export const profileService = {
 
             const { data, error } = await supabase
                 .from('profiles')
-                .select('*')
+                .select('id, full_name, email, user_type, business_name, category, image_url, phone_number, created_at, updated_at')
                 .eq('id', user.id)
                 .single();
 

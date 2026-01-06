@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../services/supabase';
 import { Store, Camera, Save, Star, ChevronDown, Check, Loader2, Link, ImageOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -36,7 +36,7 @@ const MyShop = () => {
         }
     }, [user]);
 
-    const fetchProfile = async () => {
+    const fetchProfile = useCallback(async () => {
         if (!user) {
             console.log('MyShop: No user object from AuthContext yet');
             return;
@@ -45,7 +45,7 @@ const MyShop = () => {
             console.log('MyShop: Fetching profile for', user.id);
             const { data, error } = await supabase
                 .from('profiles')
-                .select('*')
+                .select('id, business_name, full_name, category, image_url')
                 .eq('id', user.id)
                 .single();
 
@@ -64,7 +64,7 @@ const MyShop = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
     const handleImageUrlChange = (e) => {
         const url = e.target.value;
@@ -165,6 +165,7 @@ const MyShop = () => {
                                     <img
                                         src={imageUrl}
                                         alt="Dükkan Önizleme"
+                                        loading="lazy"
                                         className="w-full h-full object-cover"
                                         onError={handleImageError}
                                     />

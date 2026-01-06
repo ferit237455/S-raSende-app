@@ -39,7 +39,12 @@ const WaitingList = () => {
             const { data, error } = await supabase
                 .from('waiting_list')
                 .select(`
-                    *,
+                    id,
+                    user_id,
+                    tradesman_id,
+                    service_id,
+                    status,
+                    created_at,
                     customer:profiles!user_id(full_name, phone_number, email),
                     service:services(name, duration)
                 `)

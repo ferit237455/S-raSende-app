@@ -22,7 +22,7 @@ const Notifications = () => {
 
             const { data, error: fetchError } = await supabase
                 .from('notifications')
-                .select('*')
+                .select('id, user_id, message, type, read, created_at')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 

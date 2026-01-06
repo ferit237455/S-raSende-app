@@ -36,7 +36,7 @@ const Services = () => {
 
             const { data, error } = await supabase
                 .from('services')
-                .select('*')
+                .select('id, name, description, price, duration, created_at')
                 .eq('tradesman_id', session.user.id)
                 .order('created_at', { ascending: false });
 

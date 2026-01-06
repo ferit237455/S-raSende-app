@@ -71,12 +71,12 @@ const BookAppointment = () => {
             const [profileResult, servicesResult] = await Promise.all([
                 supabase
                     .from('profiles')
-                    .select('*')
+                    .select('id, business_name, full_name, phone_number, email')
                     .eq('id', tradesmanId)
                     .single(),
                 supabase
                     .from('services')
-                    .select('*')
+                    .select('id, name, description, price, duration')
                     .eq('tradesman_id', tradesmanId)
             ]);
 

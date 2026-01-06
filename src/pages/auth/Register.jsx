@@ -91,8 +91,20 @@ const Register = () => {
                     }
                 }
 
-                alert('Kayıt başarılı! Giriş yapabilirsiniz.');
-                navigate('/login');
+                // Email confirmation kontrolü
+                // Eğer kullanıcı email confirmation gerektiriyorsa, session null olabilir
+                if (authData.session) {
+                    // Email confirmation gerekmiyor, direkt yönlendir
+                    if (userType === 'tradesman') {
+                        navigate('/dashboard');
+                    } else {
+                        navigate('/explore');
+                    }
+                } else {
+                    // Email confirmation gerekli, login sayfasına yönlendir
+                    alert('Kayıt başarılı! E-posta adresinize gönderilen doğrulama linkine tıklayarak hesabınızı aktifleştirin.');
+                    navigate('/login');
+                }
             }
         } catch (err) {
             // Kullanıcı dostu hata mesajları

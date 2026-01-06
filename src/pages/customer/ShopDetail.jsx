@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
-import { MapPin, Phone, Mail, Clock, DollarSign, Calendar, ChevronRight, Star, Heart } from 'lucide-react';
+import { MapPin, Phone, Mail, Clock, DollarSign, Calendar, ChevronRight, Star, Heart, AlertCircle } from 'lucide-react';
 
 const ShopDetail = () => {
     const { id } = useParams();
@@ -22,12 +22,12 @@ const ShopDetail = () => {
             const [profileResult, servicesResult] = await Promise.all([
                 supabase
                     .from('profiles')
-                    .select('*')
+                    .select('id, full_name, business_name, email, phone_number, category, image_url')
                     .eq('id', id)
                     .single(),
                 supabase
                     .from('services')
-                    .select('*')
+                    .select('id, name, description, price, duration')
                     .eq('tradesman_id', id)
                     .order('price', { ascending: true })
             ]);
@@ -70,12 +70,64 @@ const ShopDetail = () => {
         navigate(`/book-appointment?tradesmanId=${id}&serviceId=${serviceId}`);
     };
 
-    if (loading) return (
-        <div className="flex flex-col justify-center items-center min-h-[60vh] gap-4">
-            <div className="w-10 h-10 border-4 border-brand-primary border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-slate-500 font-medium">İşletme Detayları Yükleniyor...</p>
+    // Skeleton Components
+    const ShopDetailSkeleton = useMemo(() => (
+        <div className="max-w-6xl mx-auto my-10 px-4 animate-pulse">
+            <div className="glass-card shadow-2xl overflow-hidden border-transparent">
+                {/* Hero Skeleton */}
+                <div className="relative h-72 md:h-96 bg-gradient-to-br from-gray-200 to-gray-300">
+                    <div className="absolute bottom-10 left-6 md:left-10 flex flex-col md:flex-row items-end md:items-center gap-6">
+                        <div className="w-24 h-24 md:w-32 md:h-32 bg-gray-300 rounded-3xl"></div>
+                        <div className="space-y-3">
+                            <div className="h-6 bg-gray-300 rounded w-32"></div>
+                            <div className="h-10 bg-gray-300 rounded w-48"></div>
+                            <div className="h-4 bg-gray-200 rounded w-40"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-6 md:p-12">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+                        {/* Main Content Skeleton */}
+                        <div className="lg:col-span-8 space-y-6">
+                            <div className="h-8 bg-gray-200 rounded w-48"></div>
+                            <div className="space-y-4">
+                                {[1, 2, 3].map(i => (
+                                    <div key={i} className="p-6 rounded-3xl bg-gray-50 border border-gray-100">
+                                        <div className="h-6 bg-gray-200 rounded w-3/4 mb-3"></div>
+                                        <div className="h-4 bg-gray-100 rounded w-full mb-2"></div>
+                                        <div className="h-4 bg-gray-100 rounded w-2/3 mb-4"></div>
+                                        <div className="flex gap-4">
+                                            <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+                                            <div className="h-8 bg-gray-200 rounded-full w-24"></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Sidebar Skeleton */}
+                        <div className="lg:col-span-4">
+                            <div className="bg-slate-50/50 border border-slate-100 p-8 rounded-[2rem] space-y-5">
+                                <div className="h-6 bg-gray-200 rounded w-40"></div>
+                                {[1, 2, 3].map(i => (
+                                    <div key={i} className="flex items-start gap-4">
+                                        <div className="w-10 h-10 bg-gray-200 rounded-xl"></div>
+                                        <div className="flex-1 space-y-2">
+                                            <div className="h-3 bg-gray-200 rounded w-20"></div>
+                                            <div className="h-4 bg-gray-100 rounded w-32"></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-    );
+    ), []);
+
+    if (loading) return ShopDetailSkeleton;
 
     if (error) return (
         <div className="max-w-4xl mx-auto p-8 text-center mt-10">
@@ -108,7 +160,12 @@ const ShopDetail = () => {
                 {/* Hero Section */}
                 <div className="relative h-72 md:h-96">
                     <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/90 to-brand-secondary/90"></div>
-                    <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center mix-blend-overlay opacity-30"></div>
+                    <img 
+                        src="https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?q=80&w=2070&auto=format&fit=crop" 
+                        alt="Shop background" 
+                        loading="lazy"
+                        className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-30"
+                    />
 
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent"></div>
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../../services/supabase';
 import { Mail, Phone, Calendar as CalendarIcon } from 'lucide-react';
 
@@ -23,7 +23,7 @@ const Customers = () => {
                 .from('appointments')
                 .select(`
                     customer_id,
-                    customer:profiles!customer_id(*)
+                    customer:profiles!customer_id(id, full_name, email, phone_number)
                 `)
                 .eq('tradesman_id', user.id);
 
@@ -31,18 +31,16 @@ const Customers = () => {
 
             if (fetchError) throw fetchError;
 
-            // Deduplicate customers
-            const uniqueCustomers = [];
-            const map = new Map();
+            // Deduplicate customers - optimized
+            const uniqueCustomersMap = new Map();
             for (const item of data) {
-                if (!map.has(item.customer_id)) {
-                    map.set(item.customer_id, true);
-                    if (item.customer) uniqueCustomers.push(item.customer);
+                if (item.customer && !uniqueCustomersMap.has(item.customer_id)) {
+                    uniqueCustomersMap.set(item.customer_id, item.customer);
                 }
             }
 
             if (isMountedRef.current && !signal?.aborted) {
-                setCustomers(uniqueCustomers);
+                setCustomers(Array.from(uniqueCustomersMap.values()));
             }
         } catch (err) {
             if (signal?.aborted || !isMountedRef.current) return;
@@ -68,6 +66,9 @@ const Customers = () => {
             abortController.abort();
         };
     }, [fetchCustomers]);
+
+    // Memoized customer count
+    const customerCount = useMemo(() => customers?.length || 0, [customers]);
 
     // Skeleton Loader
     if (loading) return (
@@ -111,7 +112,7 @@ const Customers = () => {
         <div>
             <h1 className="text-2xl font-bold text-gray-800 mb-6">Müşterilerim</h1>
 
-            {(!customers || !Array.isArray(customers) || customers?.length === 0) ? (
+            {customerCount === 0 ? (
                 <div className="bg-white p-8 rounded-lg shadow text-center text-gray-500">
                     Henüz randevu almış bir müşteriniz bulunmuyor.
                 </div>
@@ -126,7 +127,7 @@ const Customers = () => {
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {customers && Array.isArray(customers) && customers?.map((customer) => (
+                            {customers?.map((customer) => (
                                 <tr key={customer.id}>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center">
@@ -163,4 +164,5 @@ const Customers = () => {
         </div>
     );
 };
-export default Customers;
+
+export default React.memo(Customers);

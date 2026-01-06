@@ -7,10 +7,16 @@ export const appointmentService = {
             let query = supabase
                 .from('appointments')
                 .select(`
-            *,
-            service:services(*),
-            tradesman:profiles!tradesman_id(*),
-            customer:profiles!customer_id(*)
+            id,
+            start_time,
+            end_time,
+            status,
+            tradesman_id,
+            customer_id,
+            service_id,
+            service:services(id, name, duration, price),
+            tradesman:profiles!tradesman_id(id, business_name, full_name),
+            customer:profiles!customer_id(id, full_name, email)
           `);
 
             if (filters.tradesman_id) {
@@ -39,7 +45,7 @@ export const appointmentService = {
             const { data, error } = await supabase
                 .from('appointments')
                 .insert([appointmentData])
-                .select()
+                .select('id, start_time, end_time, status, tradesman_id, customer_id, service_id')
                 .single();
 
             if (error) throw error;
@@ -57,7 +63,7 @@ export const appointmentService = {
                 .from('appointments')
                 .update({ status })
                 .eq('id', id)
-                .select()
+                .select('id, status, start_time, end_time')
                 .single();
 
             if (error) throw error;

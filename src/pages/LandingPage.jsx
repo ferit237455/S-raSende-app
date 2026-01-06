@@ -1,8 +1,50 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../services/supabase';
 import { Scissors, Sparkles, ArrowRight } from 'lucide-react';
 
 const LandingPage = () => {
     const navigate = useNavigate();
+    const { user, profile, loading } = useAuth();
+
+    // Oturum açmış kullanıcıları doğru sayfaya yönlendir
+    useEffect(() => {
+        if (!loading && user) {
+            const redirectUser = async () => {
+                try {
+                    // Profile bilgisi varsa direkt kullan
+                    if (profile?.user_type) {
+                        if (profile.user_type === 'tradesman') {
+                            navigate('/dashboard', { replace: true });
+                        } else {
+                            navigate('/explore', { replace: true });
+                        }
+                        return;
+                    }
+
+                    // Profile bilgisi yoksa veritabanından çek
+                    const { data: profileData } = await supabase
+                        .from('profiles')
+                        .select('user_type')
+                        .eq('id', user.id)
+                        .single();
+
+                    if (profileData?.user_type === 'tradesman') {
+                        navigate('/dashboard', { replace: true });
+                    } else {
+                        navigate('/explore', { replace: true });
+                    }
+                } catch (error) {
+                    console.error('Error checking user type:', error);
+                    // Hata durumunda explore'a yönlendir (varsayılan)
+                    navigate('/explore', { replace: true });
+                }
+            };
+
+            redirectUser();
+        }
+    }, [user, profile, loading, navigate]);
 
     return (
         <div className="min-h-screen relative overflow-hidden">
