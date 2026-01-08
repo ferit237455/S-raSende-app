@@ -22,7 +22,7 @@ const Notifications = () => {
 
             const { data, error: fetchError } = await supabase
                 .from('notifications')
-                .select('id, user_id, message, type, read, created_at')
+                .select('id, user_id, message, type, is_read, created_at')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 
@@ -37,9 +37,22 @@ const Notifications = () => {
             }
         } catch (err) {
             if (signal?.aborted || !isMountedRef.current) return;
-            console.error('Error:', err);
+            console.error('Bildirim yükleme hatası:', err);
+            console.error('Hata detayı:', {
+                message: err.message,
+                code: err.code,
+                details: err.details,
+                hint: err.hint
+            });
             if (isMountedRef.current) {
-                setError('Bildirimler yüklenirken bir hata oluştu.');
+                // Daha açıklayıcı hata mesajı
+                if (err.code === 'PGRST116') {
+                    setError('Bildirim tablosu bulunamadı. Lütfen sistem yöneticisiyle iletişime geçin.');
+                } else if (err.message?.includes('permission')) {
+                    setError('Bildirimlere erişim izniniz yok. Lütfen giriş yapın.');
+                } else {
+                    setError(`Bildirimler yüklenirken bir hata oluştu: ${err.message || 'Bilinmeyen hata'}`);
+                }
             }
         } finally {
             if (isMountedRef.current && !signal?.aborted) {
@@ -135,10 +148,10 @@ const Notifications = () => {
         }
     };
 
-    if (loading) return (
+    if (loading && notifications.length === 0) return (
         <div className="flex justify-center items-center min-h-[50vh]">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <p className="ml-2 text-gray-500">Yükleniyor...</p>
+            <p className="ml-2 text-gray-500">Bildirimler yükleniyor...</p>
         </div>
     );
 
