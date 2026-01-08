@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../services/supabase';
 import { Scissors, Sparkles, ArrowRight } from 'lucide-react';
@@ -7,10 +7,16 @@ import { Scissors, Sparkles, ArrowRight } from 'lucide-react';
 const LandingPage = () => {
     const navigate = useNavigate();
     const { user, profile, loading } = useAuth();
+    const location = useLocation();
 
     // Oturum açmış kullanıcıları doğru sayfaya yönlendir
     useEffect(() => {
         if (!loading && user) {
+            // Kayıttan hemen sonraki anı engellemek için (sayfa yenilense de çalışır, sadece 1 tur)
+            if (sessionStorage.getItem('fromRegister')) {
+                sessionStorage.removeItem('fromRegister');
+                return;
+            }
             const redirectUser = async () => {
                 try {
                     // Profile bilgisi varsa direkt kullan
