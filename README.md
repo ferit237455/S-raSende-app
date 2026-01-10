@@ -15,7 +15,7 @@
 
 **SıraSende**, hem esnafın hem de müşterilerin zaman yönetimini optimize eden akıllı bir randevu platformudur. Randevu iptallerini fırsata çevirerek işletme verimliliğini artırırken, müşterilerin bekleme süresini minimize eder.
 
-**[Canlı Demo]** : [https://sirasende-app.vercel.app/](https://sirasende-app.vercel.app/) *(Varsayılan link, kendi linkinle değiştirebilirsin)*
+**[Canlı Demo]** : [https://sirasende-app.vercel.app/](https://sirasende-app.vercel.app/)
 
 ## 🚀 Proje Hakkında
 
