@@ -51,4 +51,4 @@ Proje, hızlı ve güvenilir bir kullanıcı deneyimi için modern teknolojilerl
 
 Bu proje MIT Lisansı ile lisanslanmıştır.
 
-⭐ **Bu proje zaman yönetimine değer katıyorsa yıldız vermeyi unutmayın!**
+⭐ **Projeyi beğendiyseniz yıldız verebilirsiniz.**
