@@ -1,16 +1,54 @@
-# React + Vite
+# ⏳ SıraSende - Akıllı Randevu ve Sıra Yönetim Platformu
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+![Repo Size](https://img.shields.io/github/repo-size/ferit237455/S-raSende-app?color=ff9f43)
+![Last Commit](https://img.shields.io/github/last-commit/ferit237455/S-raSende-app?color=00d2d3&label=SON%20GÜNCELLEME)
+![License](https://img.shields.io/github/license/ferit237455/S-raSende-app?color=54a0ff&label=LİSANS)
 
-Currently, two official plugins are available:
+### 🛠 Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+![React](https://img.shields.io/badge/REACT-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![Supabase](https://img.shields.io/badge/SUPABASE-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
+![Vercel](https://img.shields.io/badge/VERCEL-000000?style=for-the-badge&logo=vercel&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/TAILWIND_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**SıraSende**, hem esnafın hem de müşterilerin zaman yönetimini optimize eden akıllı bir randevu platformudur. Randevu iptallerini fırsata çevirerek işletme verimliliğini artırırken, müşterilerin bekleme süresini minimize eder.
 
-## Expanding the ESLint configuration
+**[Canlı Demo]** : [https://sirasende-app.vercel.app/](https://sirasende-app.vercel.app/) *(Varsayılan link, kendi linkinle değiştirebilirsin)*
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🚀 Proje Hakkında
+
+Bu proje, geleneksel randevu sistemlerindeki en büyük sorun olan "iptal edilen randevuların yarattığı zaman kaybı"na çözüm üretir. Kullanıcılar diledikleri işletmeden randevu alabilirken, istedikleri saat dolu olduğunda dijital sıraya dahil olurlar. Sistem, iptal durumlarında sıradaki kişiye anında bildirim göndererek boş kontenjanın değerlendirilmesini sağlar.
+
+## ✨ Temel Özellikler
+
+### 👤 Müşteriler İçin:
+* **Hızlı Randevu:** İşletmeleri listeleyip uygun saatlere anında kayıt oluşturma.
+* **Akıllı Bekleme Listesi:** Dolu olan saatlerde dijital sıraya girme ve boş yer açıldığında bildirim alma.
+* **Son Dakika Fırsatları:** İptal edilen randevular sayesinde dolu işletmelerde hizmet alma şansı.
+* **Randevu Takibi:** Geçmiş ve gelecek randevuları tek bir panelden yönetme.
+
+### 🏪 Esnaflar İçin:
+* **Gelir Kaybını Önleme:** Randevu iptallerini otomatik olarak sıradaki müşteriyle doldurarak "boş koltuk" sorununu bitirme.
+* **Zaman Yönetimi:** Günlük, haftalık ve aylık randevu trafiğini dijital olarak izleme.
+* **Otomatik Bildirimler:** Manuel işlem gerektirmeden müşterilere anlık durum güncellemesi gönderme.
+
+---
+
+## 🛠 Kullanılan Teknolojiler
+
+Proje, hızlı ve güvenilir bir kullanıcı deneyimi için modern teknolojilerle geliştirilmiştir:
+
+* **Frontend:** React.js & Tailwind CSS
+* **Backend & Database:** Supabase (Real-time Database & Auth)
+* **Deployment:** Vercel
+* **Version Control:** Git & GitHub
+
+---
+
+## 📄 Lisans
+
+Bu proje MIT Lisansı ile lisanslanmıştır.
+
+⭐ **Bu proje zaman yönetimine değer katıyorsa yıldız vermeyi unutmayın!**
