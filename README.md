@@ -19,7 +19,7 @@
 
 ## 🚀 Proje Hakkında
 
-Bu proje, geleneksel randevu sistemlerindeki en büyük sorun olan "iptal edilen randevuların yarattığı zaman kaybı"na çözüm üretir. Kullanıcılar diledikleri işletmeden randevu alabilirken, istedikleri saat dolu olduğunda dijital sıraya dahil olurlar. Sistem, iptal durumlarında sıradaki kişiye anında bildirim göndererek boş kontenjanın değerlendirilmesini sağlar.
+Bu proje (yapay zeka kullanılarak yapılmıştır), geleneksel randevu sistemlerindeki en büyük sorun olan "iptal edilen randevuların yarattığı zaman kaybı"na çözüm üretir. Kullanıcılar diledikleri işletmeden randevu alabilirken, istedikleri saat dolu olduğunda dijital sıraya dahil olurlar. Sistem, iptal durumlarında sıradaki kişiye anında bildirim göndererek boş kontenjanın değerlendirilmesini sağlar.
 
 ## ✨ Temel Özellikler
 
